@@ -114,6 +114,7 @@ func TestRoundTripsThroughDisk(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	f.StartAttempt("lab-a", 7, "v2", []string{"rbac"}, []string{"cluster-architecture"})
+	f.MarkLesson("04-rbac", time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC))
 	if err := f.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -123,6 +124,9 @@ func TestRoundTripsThroughDisk(t *testing.T) {
 	}
 	if got := again.Get("lab-a").LastSeed; got != 7 {
 		t.Errorf("seed did not survive a round trip: %d", got)
+	}
+	if !again.LessonViewed("04-rbac") {
+		t.Error("lesson progress did not survive a round trip")
 	}
 }
 

@@ -71,15 +71,23 @@ Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `httpService`
   excludes variant and seed, and it never receives faults, graders or solutions
 - [x] Mastery rule: >=2 passes AND latest pass used 0 hints
 - [x] Recoverable `dojo progress reset` and a normal `make install`
+- [x] Seven-level learning-stage metadata, separate from technical difficulty
+- [x] Ordered paths with pass/mastery prerequisites and an explicit jump-ahead
+- [x] Interactive state/answer checkpoints through `dojo check`
+- [x] First Services slice: Follow → Build → Inspect → guided repair →
+  contextual troubleshooting
+- [x] Stage-aware recommendations that never select locked exercises
 
 ### Milestone 4 - curriculum expansion - `next`
 
-Grow to 45-55 labs, driven by gaps found while actually studying. Do **not**
+Grow to 45-55 exercises, driven by gaps found while actually studying. Do **not**
 mass-generate labs; each one gets dogfooded. Target the published domain
 weighting: troubleshooting 30, cluster architecture 25, networking 20,
 workloads 15, storage 10.
 
-Next three labs to write: `crashloop`, `pvc-pending`, `scheduling-taint`.
+Next: dogfood all five Services exercises, then give Scheduling, RBAC and
+Storage the same concept → command → diagnosis ladder. Add `dojo placement`
+only after enough low-stage exercises exist to produce an honest result.
 
 ### Milestone 5 - special environments - `later`
 

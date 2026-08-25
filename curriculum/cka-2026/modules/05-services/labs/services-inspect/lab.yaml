@@ -1,0 +1,81 @@
+schemaVersion: 1
+id: services-inspect
+title: Watch selectors become endpoints
+learningStage: inspect
+prerequisites:
+  - services-build
+domain:
+  - services-networking
+skills:
+  - services
+  - selectors
+  - endpointslices
+difficulty: 1
+targetMinutes: 7
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/baseline.yaml
+  waitReady:
+    - namespace: dojo-services-inspect
+      kind: deployment
+      name: web
+
+checkpoints:
+  - id: identify-selector
+    task: |
+      Inspect the Service selector and the Pod labels. What complete
+      `key=value` pair connects this Service to these Pods?
+
+      Submit it from the host with `dojo check '<key=value>'`.
+    answer:
+      accepted:
+        - app=web
+      caseInsensitive: true
+  - id: remove-endpoints
+    task: |
+      Change Service `web` so its selector is `app=missing`. Watch what happens
+      to its EndpointSlice, then run `dojo check`.
+    grading:
+      all:
+        - type: jsonPath
+          kind: service
+          namespace: dojo-services-inspect
+          name: web
+          path: "{.spec.selector.app}"
+          equals: missing
+  - id: restore-endpoints
+    task: |
+      Restore the selector that you identified in the first checkpoint. Wait
+      for both endpoints to return, then run `dojo check`.
+    grading:
+      all:
+        - type: serviceHasEndpoints
+          namespace: dojo-services-inspect
+          name: web
+          port: 80
+          minEndpoints: 2
+
+grading:
+  all:
+    - type: deploymentAvailable
+      namespace: dojo-services-inspect
+      name: web
+      minReplicas: 2
+    - type: serviceHasEndpoints
+      namespace: dojo-services-inspect
+      name: web
+      port: 80
+      minEndpoints: 2
+    - type: httpService
+      namespace: dojo-services-inspect
+      service: web
+      port: 80
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-services-inspect

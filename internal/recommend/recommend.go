@@ -9,6 +9,7 @@ import (
 
 	"github.com/gustavfredrikson/cka-dojo/internal/curriculum"
 	"github.com/gustavfredrikson/cka-dojo/internal/lab"
+	"github.com/gustavfredrikson/cka-dojo/internal/learning"
 	"github.com/gustavfredrikson/cka-dojo/internal/progress"
 )
 
@@ -20,13 +21,15 @@ type Recommendation struct {
 	ExamWeight    float64
 	MasteryGap    float64
 	Recency       float64
+	StageFactor   float64
+	Unlocked      bool
 	Reason        string
 	LastPracticed time.Time
 }
 
 // Rank returns every lab from most to least useful at now.
 //
-// Score = average published domain weight x mastery gap x recency.
+// Score = average published domain weight x mastery gap x recency x stage.
 //
 // Average domain weight avoids giving a lab a free multiplier just because it
 // is tagged with two domains. Mastery gap prioritises a failed attempt above a
@@ -48,12 +51,18 @@ func Rank(cur *curriculum.Curriculum, history *progress.File, now time.Time) []R
 			r := Recommendation{
 				Lab: exercise, Module: module,
 				ExamWeight: examWeight, MasteryGap: gap, Recency: recency,
-				Reason: reason,
+				StageFactor: stageFactor(exercise.LearningStage),
+				Unlocked:    learning.Unlocked(exercise, history),
+				Reason:      reason,
 			}
 			if attempt != nil {
 				r.LastPracticed = attempt.LastAt
 			}
-			r.Score = r.ExamWeight * r.MasteryGap * r.Recency
+			if r.Unlocked {
+				r.Score = r.ExamWeight * r.MasteryGap * r.Recency * r.StageFactor
+			} else {
+				r.Reason = "prerequisites incomplete"
+			}
 			out = append(out, r)
 		}
 	}
@@ -65,6 +74,30 @@ func Rank(cur *curriculum.Curriculum, history *progress.File, now time.Time) []R
 		return out[i].Score > out[j].Score
 	})
 	return out
+}
+
+// stageFactor makes the default recommendation climb the learning ladder
+// before it offers blind diagnosis. It is a gentle preference, not a lock;
+// exam weight and demonstrated gaps still matter.
+func stageFactor(stage lab.LearningStage) float64 {
+	switch stage {
+	case lab.StageFollow:
+		return 1.40
+	case lab.StageBuild:
+		return 1.20
+	case lab.StageInspect:
+		return 1.05
+	case lab.StageGuidedFix:
+		return 1.00
+	case lab.StageContextualFix:
+		return 0.90
+	case lab.StageDiagnose:
+		return 0.75
+	case lab.StageExam:
+		return 0.60
+	default:
+		return 1.00
+	}
 }
 
 func averageWeight(domains []string, weights map[string]int) float64 {

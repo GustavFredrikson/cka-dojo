@@ -124,10 +124,16 @@ kubectl delete namespace demo
 
 ## Labs
 
-`services-no-endpoints` presents the same external symptom with several
-possible causes. Diagnose from EndpointSlices and evidence rather than
-assuming the cause from a previous attempt.
+The Services path removes scaffolding one step at a time:
 
 ```bash
+dojo start services-follow
+dojo start services-build
+dojo start services-inspect
+dojo start services-guided-selector-fix
 dojo start services-no-endpoints
 ```
+
+The first exercises show a healthy selector and EndpointSlice relationship.
+Only the final current exercise hides the cause, with several reproducible
+variants so diagnosis—not recall—determines the repair.

@@ -184,18 +184,31 @@ type Report struct {
 // Grade evaluates every requirement. It runs all checks even after the first
 // failure, because a learner deserves the whole picture.
 func (r *Runner) Grade(ctx context.Context) (*Report, error) {
+	return gradeChecks(ctx, r.Env, r.Plan.Checks, r.Plan.AnyChecks)
+}
+
+// GradeCheckpoint evaluates the state requirements for one interactive step.
+func (r *Runner) GradeCheckpoint(ctx context.Context, index int) (*Report, error) {
+	if index < 0 || index >= len(r.Plan.Checkpoints) {
+		return nil, fmt.Errorf("checkpoint %d is out of range", index+1)
+	}
+	cp := r.Plan.Checkpoints[index]
+	return gradeChecks(ctx, r.Env, cp.Checks, cp.AnyChecks)
+}
+
+func gradeChecks(ctx context.Context, env *environment.Manager, checks, anyChecks []grader.Checker) (*Report, error) {
 	rep := &Report{Passed: true}
-	for _, c := range r.Plan.Checks {
-		res := c.Check(ctx, r.Env)
+	for _, c := range checks {
+		res := c.Check(ctx, env)
 		rep.Required = append(rep.Required, res)
 		if !res.Passed {
 			rep.Passed = false
 		}
 	}
-	if len(r.Plan.AnyChecks) > 0 {
+	if len(anyChecks) > 0 {
 		anyPassed := false
-		for _, c := range r.Plan.AnyChecks {
-			res := c.Check(ctx, r.Env)
+		for _, c := range anyChecks {
+			res := c.Check(ctx, env)
 			rep.Any = append(rep.Any, res)
 			if res.Passed {
 				anyPassed = true

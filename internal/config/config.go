@@ -49,6 +49,7 @@ type State struct {
 	StartedAt    time.Time `json:"startedAt,omitempty"`
 	HintsUsed    int       `json:"hintsUsed,omitempty"`
 	Attempt      int       `json:"attempt,omitempty"`
+	Checkpoint   int       `json:"checkpoint,omitempty"`
 	SolutionRead bool      `json:"solutionRead,omitempty"`
 	// Passed records that this attempt has already been graded correct, so
 	// re-grading does not inflate the pass count.

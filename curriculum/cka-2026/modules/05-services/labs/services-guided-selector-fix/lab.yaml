@@ -1,0 +1,61 @@
+schemaVersion: 1
+id: services-guided-selector-fix
+title: Repair a known selector mismatch
+learningStage: guided-fix
+prerequisites:
+  - services-inspect
+domain:
+  - services-networking
+  - troubleshooting
+skills:
+  - services
+  - selectors
+  - endpointslices
+  - service-debugging
+difficulty: 1
+targetMinutes: 5
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/baseline.yaml
+  waitReady:
+    - namespace: dojo-services-guided
+      kind: deployment
+      name: web
+  faults:
+    - type: kubernetesPatch
+      resource: service/web
+      namespace: dojo-services-guided
+      patch:
+        spec:
+          selector:
+            app: wrong
+
+grading:
+  all:
+    - type: deploymentAvailable
+      namespace: dojo-services-guided
+      name: web
+      minReplicas: 2
+    - type: serviceHasEndpoints
+      namespace: dojo-services-guided
+      name: web
+      port: 80
+      minEndpoints: 2
+    - type: httpService
+      namespace: dojo-services-guided
+      service: web
+      port: 80
+
+hints:
+  - Compare the Service's `spec.selector` with the labels on its Pods.
+  - Use `kubectl get pods --show-labels` and `kubectl get svc web -o yaml`.
+  - "Patch or edit the existing Service so its selector is `app: web`."
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-services-guided

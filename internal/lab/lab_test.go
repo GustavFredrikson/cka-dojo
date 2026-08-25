@@ -133,3 +133,49 @@ metadata:
 		t.Errorf("namespaceNames = %v, want [shop]", got)
 	}
 }
+
+func TestAnswerMatchingIsTrimmedAndOptionallyCaseInsensitive(t *testing.T) {
+	a := &Answer{Accepted: []string{"app=web"}, CaseInsensitive: true}
+	if !a.Matches("  APP=WEB  ") {
+		t.Fatal("case-insensitive answer did not match")
+	}
+	if a.Matches("app=api") {
+		t.Fatal("incorrect answer matched")
+	}
+}
+
+func TestLearningStagesHaveStableLevels(t *testing.T) {
+	want := []LearningStage{
+		StageFollow, StageBuild, StageInspect, StageGuidedFix,
+		StageContextualFix, StageDiagnose, StageExam,
+	}
+	for i, stage := range want {
+		info, ok := stage.Info()
+		if !ok || info.Level != i+1 {
+			t.Errorf("stage %q = %+v, %v; want level %d", stage, info, ok, i+1)
+		}
+	}
+	if err := LearningStage("mystery").Validate(); err == nil {
+		t.Fatal("unknown learning stage passed validation")
+	}
+}
+
+func TestServicesInspectBuildsInteractiveCheckpoints(t *testing.T) {
+	l, err := Load(repoContent(t), "curriculum/cka-2026/modules/05-services/labs/services-inspect")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	plan, err := l.Build(nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if len(plan.Checkpoints) != 3 {
+		t.Fatalf("checkpoints = %d, want 3", len(plan.Checkpoints))
+	}
+	if plan.Checkpoints[0].Definition.Answer == nil {
+		t.Error("first checkpoint should collect an observation")
+	}
+	if len(plan.Checkpoints[1].Checks) == 0 || len(plan.Checkpoints[2].Checks) == 0 {
+		t.Error("state checkpoints did not build graders")
+	}
+}

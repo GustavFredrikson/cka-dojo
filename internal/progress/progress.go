@@ -46,8 +46,9 @@ func (a *Attempt) Mastered() bool {
 
 // File is the whole progress record.
 type File struct {
-	Version int                 `json:"version"`
-	Labs    map[string]*Attempt `json:"labs"`
+	Version int                  `json:"version"`
+	Labs    map[string]*Attempt  `json:"labs"`
+	Lessons map[string]time.Time `json:"lessons,omitempty"`
 }
 
 func path() (string, error) {
@@ -64,7 +65,7 @@ func Load() (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := &File{Version: 1, Labs: map[string]*Attempt{}}
+	f := &File{Version: 1, Labs: map[string]*Attempt{}, Lessons: map[string]time.Time{}}
 	data, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return f, nil
@@ -77,6 +78,9 @@ func Load() (*File, error) {
 	}
 	if f.Labs == nil {
 		f.Labs = map[string]*Attempt{}
+	}
+	if f.Lessons == nil {
+		f.Lessons = map[string]time.Time{}
 	}
 	return f, nil
 }
@@ -119,7 +123,7 @@ func Archive(now time.Time) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	fresh := &File{Version: 1, Labs: map[string]*Attempt{}}
+	fresh := &File{Version: 1, Labs: map[string]*Attempt{}, Lessons: map[string]time.Time{}}
 	if err := fresh.Save(); err != nil {
 		// Best effort: put the original back if creating the new record failed.
 		if backup != "" {
@@ -128,6 +132,19 @@ func Archive(now time.Time) (string, error) {
 		return "", err
 	}
 	return backup, nil
+}
+
+// MarkLesson records that the learner opened a module's mental model.
+func (f *File) MarkLesson(module string, at time.Time) {
+	if f.Lessons == nil {
+		f.Lessons = map[string]time.Time{}
+	}
+	f.Lessons[module] = at
+}
+
+// LessonViewed reports whether the module lesson has been opened.
+func (f *File) LessonViewed(module string) bool {
+	return f != nil && !f.Lessons[module].IsZero()
 }
 
 func availableBackupPath(base string) (string, error) {

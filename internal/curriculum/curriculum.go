@@ -321,5 +321,49 @@ func (c *Curriculum) Validate() []error {
 			seenLab[l.ID] = m.ID
 		}
 	}
+	for _, m := range c.Modules {
+		for _, l := range m.Labs {
+			for _, requirement := range append(append([]string{}, l.Prerequisites...), l.MasteryPrerequisites...) {
+				if requirement == l.ID {
+					add("lab %s requires itself", l.ID)
+					continue
+				}
+				if _, ok := seenLab[requirement]; !ok {
+					add("lab %s: unknown prerequisite %q", l.ID, requirement)
+				}
+			}
+		}
+	}
+	// A typo is caught above; this catches a valid-looking path that can never
+	// unlock because its prerequisite chain loops back on itself.
+	byLab := map[string]*lab.Lab{}
+	for _, l := range c.Labs() {
+		byLab[l.ID] = l
+	}
+	state := map[string]int{} // 0 unseen, 1 visiting, 2 complete
+	var visit func(string, []string)
+	visit = func(id string, trail []string) {
+		if state[id] == 2 {
+			return
+		}
+		if state[id] == 1 {
+			add("prerequisite cycle: %s", strings.Join(append(trail, id), " -> "))
+			return
+		}
+		state[id] = 1
+		exercise := byLab[id]
+		if exercise != nil {
+			requirements := append(append([]string{}, exercise.Prerequisites...), exercise.MasteryPrerequisites...)
+			for _, requirement := range requirements {
+				if byLab[requirement] != nil {
+					visit(requirement, append(trail, id))
+				}
+			}
+		}
+		state[id] = 2
+	}
+	for id := range byLab {
+		visit(id, nil)
+	}
 	return errs
 }

@@ -72,3 +72,29 @@ func TestRecencyRisesAndCaps(t *testing.T) {
 		t.Errorf("old recency = %.2f, want 1.25", got)
 	}
 }
+
+func TestLockedExerciseIsNotRecommended(t *testing.T) {
+	now := time.Now()
+	c := testCurriculum()
+	locked := c.Modules[0].Labs[0]
+	locked.Prerequisites = []string{"foundation"}
+	history := &progress.File{Version: 1, Labs: map[string]*progress.Attempt{}}
+
+	got := Rank(c, history, now)
+	for _, recommendation := range got {
+		if recommendation.Lab.ID != locked.ID {
+			continue
+		}
+		if recommendation.Unlocked || recommendation.Score != 0 {
+			t.Fatalf("locked recommendation = unlocked %v, score %.1f", recommendation.Unlocked, recommendation.Score)
+		}
+		return
+	}
+	t.Fatal("locked exercise disappeared from full ranking")
+}
+
+func TestEarlyStageGetsProgressionPreference(t *testing.T) {
+	if stageFactor(lab.StageFollow) <= stageFactor(lab.StageDiagnose) {
+		t.Fatal("follow stage should rank ahead of blind diagnosis when other factors match")
+	}
+}

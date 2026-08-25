@@ -1,0 +1,58 @@
+schemaVersion: 1
+id: services-build
+title: Expose a workload without a recipe
+learningStage: build
+prerequisites:
+  - services-follow
+domain:
+  - services-networking
+skills:
+  - services
+  - selectors
+difficulty: 1
+targetMinutes: 5
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/baseline.yaml
+  waitReady:
+    - namespace: dojo-services-build
+      kind: deployment
+      name: api
+
+checkpoints:
+  - id: exposed
+    task: |
+      Create the requested Service using any valid workflow. Inspect its
+      EndpointSlice, then run `dojo check`.
+    grading:
+      all:
+        - type: serviceHasEndpoints
+          namespace: dojo-services-build
+          name: api
+          port: 8080
+          minEndpoints: 2
+
+grading:
+  all:
+    - type: deploymentAvailable
+      namespace: dojo-services-build
+      name: api
+      minReplicas: 2
+    - type: serviceHasEndpoints
+      namespace: dojo-services-build
+      name: api
+      port: 8080
+      minEndpoints: 2
+    - type: httpService
+      namespace: dojo-services-build
+      service: api
+      port: 8080
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-services-build

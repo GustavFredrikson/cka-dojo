@@ -45,6 +45,39 @@ type Grading struct {
 
 func (g Grading) empty() bool { return len(g.All) == 0 && len(g.Any) == 0 }
 
+// Answer is an accepted response to an observation checkpoint. Answers are
+// deliberately small and factual; cluster state remains the source of truth
+// for configuration and repair checkpoints.
+type Answer struct {
+	Accepted        []string `yaml:"accepted"`
+	CaseInsensitive bool     `yaml:"caseInsensitive"`
+}
+
+// Matches compares a learner answer with the accepted forms.
+func (a *Answer) Matches(got string) bool {
+	got = strings.TrimSpace(got)
+	for _, want := range a.Accepted {
+		want = strings.TrimSpace(want)
+		if a.CaseInsensitive {
+			if strings.EqualFold(got, want) {
+				return true
+			}
+		} else if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+// Checkpoint is one step in an interactive exercise. It may ask for a short
+// observation, validate cluster state, or require both.
+type Checkpoint struct {
+	ID      string  `yaml:"id"`
+	Task    string  `yaml:"task"`
+	Answer  *Answer `yaml:"answer"`
+	Grading Grading `yaml:"grading"`
+}
+
 // Variant is one randomised form of a lab. Variants exist so that repeating a
 // lab trains diagnosis rather than recall.
 type Variant struct {
@@ -74,19 +107,26 @@ type ExamSpec struct {
 
 // Lab is one exercise, loaded from labs/<id>/lab.yaml.
 type Lab struct {
-	SchemaVersion int      `yaml:"schemaVersion"`
-	ID            string   `yaml:"id"`
-	Title         string   `yaml:"title"`
-	Domains       []string `yaml:"domain"`
-	Skills        []string `yaml:"skills"`
-	Difficulty    int      `yaml:"difficulty"`
-	TargetMinutes int      `yaml:"targetMinutes"`
-	Environment   EnvSpec  `yaml:"environment"`
-	Setup         Setup    `yaml:"setup"`
+	SchemaVersion int           `yaml:"schemaVersion"`
+	ID            string        `yaml:"id"`
+	Title         string        `yaml:"title"`
+	Domains       []string      `yaml:"domain"`
+	Skills        []string      `yaml:"skills"`
+	LearningStage LearningStage `yaml:"learningStage"`
+	Difficulty    int           `yaml:"difficulty"`
+	TargetMinutes int           `yaml:"targetMinutes"`
+	Environment   EnvSpec       `yaml:"environment"`
+	Setup         Setup         `yaml:"setup"`
 	Variants      *Variants
-	Grading       Grading  `yaml:"grading"`
-	Hints         []string `yaml:"hints"`
-	Exam          ExamSpec `yaml:"exam"`
+	Grading       Grading      `yaml:"grading"`
+	Hints         []string     `yaml:"hints"`
+	Checkpoints   []Checkpoint `yaml:"checkpoints"`
+	// Prerequisites need one pass. MasteryPrerequisites need the full mastery
+	// rule and are intended for challenge/exam gates. Both can be bypassed
+	// explicitly; the path is guidance, not a prison.
+	Prerequisites        []string `yaml:"prerequisites"`
+	MasteryPrerequisites []string `yaml:"masteryPrerequisites"`
+	Exam                 ExamSpec `yaml:"exam"`
 	// Conflicts names resources a lab monopolises, so the exam generator can
 	// avoid pairing two labs that would fight.
 	Conflicts []string `yaml:"conflicts"`
@@ -153,13 +193,21 @@ func (l *Lab) VariantByID(id string) *Variant {
 // Plan is the concrete shape of one attempt: base setup merged with the
 // chosen variant.
 type Plan struct {
-	Lab       *Lab
-	Variant   *Variant
-	Manifests []string
-	Faults    []fault.Fault
-	Checks    []grader.Checker
-	AnyChecks []grader.Checker
-	Hints     []string
+	Lab         *Lab
+	Variant     *Variant
+	Manifests   []string
+	Faults      []fault.Fault
+	Checks      []grader.Checker
+	AnyChecks   []grader.Checker
+	Hints       []string
+	Checkpoints []CheckpointPlan
+}
+
+// CheckpointPlan is a decoded, runnable checkpoint.
+type CheckpointPlan struct {
+	Definition Checkpoint
+	Checks     []grader.Checker
+	AnyChecks  []grader.Checker
 }
 
 // Build resolves a lab plus a variant into runnable faults and checks.
@@ -190,6 +238,16 @@ func (l *Lab) Build(v *Variant) (*Plan, error) {
 	if p.AnyChecks, err = grader.BuildAll(grading.Any); err != nil {
 		return nil, fmt.Errorf("lab %s: %w", l.ID, err)
 	}
+	for _, checkpoint := range l.Checkpoints {
+		cp := CheckpointPlan{Definition: checkpoint}
+		if cp.Checks, err = grader.BuildAll(checkpoint.Grading.All); err != nil {
+			return nil, fmt.Errorf("lab %s checkpoint %s: %w", l.ID, checkpoint.ID, err)
+		}
+		if cp.AnyChecks, err = grader.BuildAll(checkpoint.Grading.Any); err != nil {
+			return nil, fmt.Errorf("lab %s checkpoint %s: %w", l.ID, checkpoint.ID, err)
+		}
+		p.Checkpoints = append(p.Checkpoints, cp)
+	}
 	return p, nil
 }
 
@@ -207,6 +265,9 @@ func (l *Lab) Validate(knownDomains, knownSkills map[string]bool, knownProfiles 
 	}
 	if l.Title == "" {
 		add("title is required")
+	}
+	if err := l.LearningStage.Validate(); err != nil {
+		add("%v", err)
 	}
 	if l.Difficulty < 1 || l.Difficulty > 5 {
 		add("difficulty must be 1-5, got %d", l.Difficulty)
@@ -239,8 +300,27 @@ func (l *Lab) Validate(knownDomains, knownSkills map[string]bool, knownProfiles 
 	if _, err := l.Solution(); err != nil {
 		add("%v", err)
 	}
-	if len(l.Hints) == 0 && (l.Variants == nil || len(l.Variants.Options) == 0) {
+	if l.LearningStage.NeedsHints() && len(l.Hints) == 0 && (l.Variants == nil || len(l.Variants.Options) == 0) {
 		add("no hints; a lab without progressive hints cannot be run in guided mode")
+	}
+	checkpointIDs := map[string]bool{}
+	for i, checkpoint := range l.Checkpoints {
+		if checkpoint.ID == "" {
+			add("checkpoint %d has no id", i+1)
+		}
+		if checkpointIDs[checkpoint.ID] {
+			add("duplicate checkpoint id %q", checkpoint.ID)
+		}
+		checkpointIDs[checkpoint.ID] = true
+		if strings.TrimSpace(checkpoint.Task) == "" {
+			add("checkpoint %q has no task", checkpoint.ID)
+		}
+		if checkpoint.Answer == nil && checkpoint.Grading.empty() {
+			add("checkpoint %q has neither an answer nor grading", checkpoint.ID)
+		}
+		if checkpoint.Answer != nil && len(checkpoint.Answer.Accepted) == 0 {
+			add("checkpoint %q answer has no accepted values", checkpoint.ID)
+		}
 	}
 
 	// Every variant, and the base lab, must build and must grade something.

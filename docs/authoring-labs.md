@@ -15,9 +15,26 @@ Run `dojo content validate` after every change. It catches unknown fault and
 grader types, missing manifests, undeclared skills, labs with no hints, and
 YAML that will not parse — offline, in under a second.
 
-## The three rules
+## The four rules
 
-**1. The task states the symptom, never the cause.**
+**1. Every skill climbs concept → command → diagnosis.**
+
+Do not introduce a concept through blind troubleshooting. Begin with a healthy
+system and explicit commands, remove scaffolding over several exercises, then
+hide the cause. `learningStage` records where an exercise sits:
+
+```text
+follow → build → inspect → guided-fix → contextual-fix → diagnose → exam
+```
+
+Learning stage is independent of `difficulty`: a detailed walkthrough of
+kubelet internals may be advanced but still be a Follow exercise.
+
+**2. Reveal only what is appropriate for the stage.**
+
+At `guided-fix`, naming the broken selector is teaching. At `diagnose`, it
+would give away the exercise. A contextual or diagnostic task states the
+symptom, never the cause:
 
 > The Pods are healthy. Requests sent to the Service do not reach them.
 
@@ -28,13 +45,13 @@ not
 Diagnosis *is* the exercise. If the task names the broken field, all that is
 left is typing.
 
-**2. Grade state, never commands.**
+**3. Grade state, never commands.**
 
 Never ask "did they run `kubectl patch`". Ask "does the Service now have ready
 endpoints". Imperative kubectl, `kubectl edit`, a rewritten manifest and a
 patch are all correct, and the exam scores them all the same.
 
-**3. Every fault must be undoable.**
+**4. Every fault must be undoable.**
 
 `dojo reset` calls each fault's repair. Prefer a named primitive, which knows
 how to undo itself. `nodeExec` requires you to supply the `undo` script, and
@@ -46,6 +63,9 @@ validation rejects it if you do not.
 schemaVersion: 1
 id: services-no-endpoints          # unique across the whole curriculum
 title: A Service that does not answer
+learningStage: contextual-fix       # progression, separate from difficulty
+prerequisites: [services-guided-selector-fix]
+# masteryPrerequisites: [services-target-port]
 domain: [services-networking, troubleshooting]
 skills: [services, selectors, endpointslices, service-debugging]
 difficulty: 1                      # 1-5
@@ -91,6 +111,31 @@ conflicts:                         # resources this lab monopolises
 `domain` and `skills` values must exist in `curriculum.yaml`. This is enforced,
 because progress is reported per skill and a typo would silently create a new
 one.
+
+## Interactive checkpoints
+
+Follow, Build, and Inspect exercises can split work into validated steps:
+
+```yaml
+checkpoints:
+  - id: inspect-selector
+    task: Which `key=value` pair connects the Service to its Pods?
+    answer:
+      accepted: [app=web]
+      caseInsensitive: true
+  - id: restore-endpoints
+    task: Restore the selector, wait for both endpoints, then run `dojo check`.
+    grading:
+      all:
+        - type: serviceHasEndpoints
+          namespace: shop
+          name: web
+          minEndpoints: 2
+```
+
+An answer checkpoint collects one small factual observation. Configuration
+checkpoints use the normal state graders. The learner advances with
+`dojo check` or `dojo check <answer>`; final grading runs after the last step.
 
 ## Variants
 

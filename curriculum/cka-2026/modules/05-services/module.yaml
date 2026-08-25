@@ -7,4 +7,8 @@ domains:
   - services-networking
   - troubleshooting
 labs:
+  - services-follow
+  - services-build
+  - services-inspect
+  - services-guided-selector-fix
   - services-no-endpoints

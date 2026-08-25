@@ -1,6 +1,9 @@
 schemaVersion: 1
 id: services-no-endpoints
 title: A Service that does not answer
+learningStage: contextual-fix
+prerequisites:
+  - services-guided-selector-fix
 domain:
   - services-networking
   - troubleshooting

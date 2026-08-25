@@ -65,6 +65,23 @@ The standard structure is:
 ## Labs
 ```
 
+Every topic then climbs the same support ladder:
+
+| Level | Stage | Learner experience |
+|---:|---|---|
+| 0 | Learn | mental model and command vocabulary |
+| 1 | Follow | exact commands with explanation |
+| 2 | Build | clear desired state, learner chooses the workflow |
+| 3 | Inspect | explain a healthy system |
+| 4 | Fix, guided | broken system; fault area revealed |
+| 5 | Fix, contextual | symptom and local context only |
+| 6 | Diagnose | user-visible failure only |
+| 7 | Exam | timed, mixed, no hints |
+
+`dojo learn <module>` displays this path. Normal prerequisites require one
+pass; `masteryPrerequisites` require the mastery rule. The latter are intended
+for challenges. Either can be bypassed explicitly for prior experience.
+
 ## Skills are the unit of progress
 
 Every lab declares the capabilities it exercises:
@@ -116,16 +133,18 @@ never deleted outright.
 
 ## Recommendations
 
-`dojo recommend` ranks labs with one transparent formula:
+`dojo recommend` ranks unlocked exercises with one transparent formula:
 
 ```text
-score = average published domain weight × mastery gap × recency
+score = average published domain weight × mastery gap × recency × stage factor
 ```
 
 An attempted-but-unpassed lab has the largest mastery gap. A new lab comes
 next, followed by a passed but unmastered lab. Mastered labs remain low-weight
 spaced-review candidates. Recency rises linearly for fourteen days after the
-last attempt. `dojo recommend --all` prints every factor used in the ranking.
+last attempt. The stage factor gently prefers supported practice over blind
+diagnosis while a topic is new. Locked exercises receive no score.
+`dojo recommend --all` prints every factor used in the ranking.
 
 ## Expanding the curriculum
 

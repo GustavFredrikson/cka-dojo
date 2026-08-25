@@ -2,28 +2,21 @@
 
 CKA practice on real, disposable Kubernetes clusters.
 
-`dojo` builds a four-machine kubeadm cluster in local VMs, breaks it on
-purpose, and grades **the state you leave behind** rather than the commands you
-type. Fix a Service with `kubectl edit`, a patch, or a rewritten manifest — all
-three pass, exactly as they would on the exam.
+`dojo` builds a four-machine kubeadm cluster in local VMs and teaches each
+topic through a deliberate ladder: learn, follow, build, inspect, guided fix,
+contextual fix, diagnose, then exam. It grades **the state you leave behind**
+rather than the commands you type.
 
 ```
-$ dojo start services-no-endpoints
+$ dojo learn services
 
-A Service that does not answer
-lab services-no-endpoints  |  target 6 minutes  |  difficulty *  |  seed 4471902
-
-The `shop` namespace runs a small web application behind a ClusterIP Service
-called `web`.
-
-The Pods are healthy. Requests sent to the Service do not reach them.
-
-Restore connectivity through the existing Service `web`, on port 80.
-
-Work in `dojo shell`. Check your work with `dojo grade`.
+Services learning path
+·  1  Follow           services-follow
+🔒 2  Build            services-build
+🔒 3  Inspect          services-inspect
+🔒 4  Fix, guided      services-guided-selector-fix
+🔒 5  Fix, contextual  services-no-endpoints
 ```
-
-Note what the task does *not* say: what is broken.
 
 ## Requirements
 
@@ -68,6 +61,7 @@ dojo learn services        # concise theory and diagnostic workflow
 dojo recommend             # what your history says to practise next
 dojo start <lab>           # build the scenario, print the task
 dojo shell                 # go and fix it
+dojo check [answer]        # validate the current tutorial checkpoint
 dojo grade                 # check the cluster against the requirements
 dojo hint                  # a nudge, one level at a time, recorded
 dojo solution              # a worked answer
@@ -76,6 +70,11 @@ dojo stop                  # end the lab and clean up
 dojo tutor-context         # safe metadata to paste into an AI tutor
 dojo progress reset        # archive development history and start fresh
 ```
+
+The default path is ordered. A passed prerequisite unlocks the next exercise;
+mastery gates can require two passes with the latest successful pass using no
+hints. Experienced learners can jump ahead explicitly with
+`dojo start <lab> --skip-prerequisites`.
 
 Environment management:
 

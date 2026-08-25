@@ -34,8 +34,9 @@ adding a provider never touches curriculum**.
 | `internal/grader` | The vocabulary for deciding it is fixed |
 | `internal/lab` | Lab schema, loader, and the runner that drives an attempt |
 | `internal/curriculum` | Domains, skills, modules, lab discovery |
+| `internal/learning` | Learning-stage prerequisites and path status |
 | `internal/progress` | Attempt history and the mastery rule |
-| `internal/recommend` | Transparent weight × mastery-gap × recency ranking |
+| `internal/recommend` | Transparent weight × gap × recency × stage ranking |
 | `internal/ui` | The only writer to the terminal; mirrors everything to a log |
 
 ## Why a separate workstation VM
@@ -122,6 +123,7 @@ exists.
 dojo start <lab>
     │
     ├── load curriculum, find the lab
+    ├── enforce pass/mastery prerequisites unless explicitly skipped
     ├── ensure the environment is up (build it if not)
     ├── pick a variant from the seed
     ├── build a Plan: manifests + faults + checks
@@ -132,6 +134,11 @@ dojo start <lab>
     │      inject faults                         diagnose a slow start-up
     │
     └── write state.json, print task.md
+
+dojo check                         <- interactive exercises only
+    │
+    ├── validate a short answer and/or current cluster state
+    └── persist the next checkpoint
 
 dojo grade
     │

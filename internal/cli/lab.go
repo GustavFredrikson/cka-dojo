@@ -13,6 +13,7 @@ import (
 	"github.com/gustavfredrikson/cka-dojo/internal/environment"
 	"github.com/gustavfredrikson/cka-dojo/internal/grader"
 	"github.com/gustavfredrikson/cka-dojo/internal/lab"
+	"github.com/gustavfredrikson/cka-dojo/internal/learning"
 	"github.com/gustavfredrikson/cka-dojo/internal/progress"
 	"github.com/gustavfredrikson/cka-dojo/internal/ui"
 	"github.com/spf13/cobra"
@@ -97,6 +98,7 @@ func newLabsCmd(app *App) *cobra.Command {
 					rows = append(rows, []string{
 						l.ID,
 						m.ID,
+						stageLabel(l),
 						strings.Repeat("*", l.Difficulty),
 						fmt.Sprintf("%dm", l.TargetMinutes),
 						statusMark(prog.Labs[l.ID]),
@@ -108,7 +110,7 @@ func newLabsCmd(app *App) *cobra.Command {
 				ui.Info("no labs match that filter")
 				return nil
 			}
-			ui.Table([]string{"LAB", "MODULE", "DIFF", "TARGET", "STATE", "TITLE"}, rows)
+			ui.Table([]string{"LAB", "MODULE", "STAGE", "DIFF", "TARGET", "STATE", "TITLE"}, rows)
 			ui.Blank()
 			ui.Info("Start one with `dojo start <lab>`.")
 			return nil
@@ -117,6 +119,13 @@ func newLabsCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&domain, "domain", "", "only labs in this exam domain")
 	cmd.Flags().StringVar(&skill, "skill", "", "only labs exercising this skill")
 	return cmd
+}
+
+func stageLabel(l *lab.Lab) string {
+	if info, ok := l.LearningStage.Info(); ok {
+		return fmt.Sprintf("%d %s", info.Level, info.Name)
+	}
+	return "?"
 }
 
 func statusMark(a *progress.Attempt) string {
@@ -143,10 +152,11 @@ func contains(list []string, want string) bool {
 
 func newStartCmd(app *App) *cobra.Command {
 	var (
-		seed    int64
-		variant string
-		mode    string
-		force   bool
+		seed              int64
+		variant           string
+		mode              string
+		force             bool
+		skipPrerequisites bool
 	)
 	cmd := &cobra.Command{
 		Use:   "start <lab>",
@@ -166,6 +176,18 @@ func newStartCmd(app *App) *cobra.Command {
 			l, _ := cur.LabByID(args[0])
 			if l == nil {
 				return fmt.Errorf("no lab called %q; see `dojo labs`", args[0])
+			}
+			history, err := progress.Load()
+			if err != nil {
+				return err
+			}
+			if missing := learning.Missing(l, history); len(missing) > 0 && !skipPrerequisites {
+				parts := make([]string, len(missing))
+				for i, requirement := range missing {
+					parts[i] = requirement.String()
+				}
+				return fmt.Errorf("%s is locked; complete %s first, or pass --skip-prerequisites to jump ahead",
+					l.ID, strings.Join(parts, ", "))
 			}
 
 			st, err := config.LoadState()
@@ -216,12 +238,8 @@ func newStartCmd(app *App) *cobra.Command {
 				return fmt.Errorf("could not build the scenario: %w", err)
 			}
 
-			prog, err := progress.Load()
-			if err != nil {
-				return err
-			}
-			att := prog.StartAttempt(l.ID, seed, variantID(v), l.Skills, l.Domains)
-			if err := prog.Save(); err != nil {
+			att := history.StartAttempt(l.ID, seed, variantID(v), l.Skills, l.Domains)
+			if err := history.Save(); err != nil {
 				return err
 			}
 
@@ -247,6 +265,7 @@ func newStartCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&variant, "variant", "", "force a specific variant (spoils the surprise)")
 	cmd.Flags().StringVar(&mode, "mode", string(config.ModePractice), "guided, practice or exam")
 	cmd.Flags().BoolVar(&force, "force", false, "abandon a lab that is still running")
+	cmd.Flags().BoolVar(&skipPrerequisites, "skip-prerequisites", false, "jump ahead in the learning path")
 	return cmd
 }
 
@@ -264,14 +283,32 @@ func printTask(l *lab.Lab, st *config.State) {
 		return
 	}
 	ui.Heading("%s", l.Title)
-	ui.Info("lab %s  |  target %d minutes  |  difficulty %s  |  seed %d",
-		l.ID, l.TargetMinutes, strings.Repeat("*", l.Difficulty), st.Seed)
+	ui.Info("lab %s  |  stage %s  |  target %d minutes  |  difficulty %s  |  seed %d",
+		l.ID, stageLabel(l), l.TargetMinutes, strings.Repeat("*", l.Difficulty), st.Seed)
 	ui.Blank()
 	// task.md repeats the title as an H1 so it reads well on its own; drop it
 	// here rather than printing the same line twice.
 	ui.Markdown(stripLeadingHeading(task))
 	ui.Blank()
-	ui.Info("Work in `dojo shell`. Check your work with `dojo grade`.")
+	if len(l.Checkpoints) > 0 {
+		printCheckpoint(l, st.Checkpoint)
+		ui.Info("Work in `dojo shell`. Validate this step with `dojo check`.")
+	} else {
+		ui.Info("Work in `dojo shell`. Check your work with `dojo grade`.")
+	}
+}
+
+func printCheckpoint(l *lab.Lab, index int) {
+	if index < 0 || index >= len(l.Checkpoints) {
+		return
+	}
+	cp := l.Checkpoints[index]
+	ui.Blank()
+	ui.Heading("Checkpoint %d of %d — %s", index+1, len(l.Checkpoints), cp.ID)
+	ui.Markdown(cp.Task)
+	if cp.Answer != nil {
+		ui.Info("Answer with `dojo check <answer>`.")
+	}
 }
 
 // stripLeadingHeading removes a leading level-one Markdown heading.
@@ -301,6 +338,93 @@ func newTaskCmd(app *App) *cobra.Command {
 	}
 }
 
+func newCheckCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "check [answer]",
+		Short: "Validate and advance an interactive checkpoint",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lock, err := config.Acquire()
+			if err != nil {
+				return err
+			}
+			defer lock.Release()
+			a, err := app.loadActive(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if len(a.Plan.Checkpoints) == 0 {
+				return fmt.Errorf("lab %s has no interactive checkpoints; use `dojo grade`", a.Lab.ID)
+			}
+			if a.State.Checkpoint >= len(a.Plan.Checkpoints) {
+				return fmt.Errorf("all checkpoints are complete; use `dojo grade`")
+			}
+			if a.State.Mode == config.ModeExam {
+				return fmt.Errorf("checkpoints are unavailable during an exam")
+			}
+			if err := requireRunning(cmd.Context(), a.Env); err != nil {
+				return err
+			}
+
+			cp := a.Plan.Checkpoints[a.State.Checkpoint]
+			if cp.Definition.Answer != nil {
+				answer := strings.Join(args, " ")
+				if answer == "" {
+					return fmt.Errorf("this checkpoint expects an answer: `dojo check <answer>`")
+				}
+				if !cp.Definition.Answer.Matches(answer) {
+					return fmt.Errorf("not quite; inspect the resources again and retry")
+				}
+			} else if len(args) > 0 {
+				return fmt.Errorf("this checkpoint validates cluster state and takes no answer")
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), labTimeout)
+			defer cancel()
+			if len(cp.Checks) > 0 || len(cp.AnyChecks) > 0 {
+				rep, err := a.Runner.GradeCheckpoint(ctx, a.State.Checkpoint)
+				if err != nil {
+					return err
+				}
+				printReport(rep)
+				if !rep.Passed {
+					return fmt.Errorf("checkpoint is not complete yet")
+				}
+			}
+
+			a.State.Checkpoint++
+			if err := config.SaveState(a.State); err != nil {
+				return err
+			}
+			ui.OK("checkpoint complete")
+			if a.State.Checkpoint < len(a.Plan.Checkpoints) {
+				printCheckpoint(a.Lab, a.State.Checkpoint)
+				return nil
+			}
+
+			ui.Step("checking the completed exercise")
+			rep, err := a.Runner.Grade(ctx)
+			if err != nil {
+				return err
+			}
+			printReport(rep)
+			if !rep.Passed {
+				return fmt.Errorf("checkpoints are complete, but the final required state is not")
+			}
+			att, err := recordGrade(a, true)
+			if err != nil {
+				return err
+			}
+			ui.OK("exercise passed in %s", a.State.Elapsed().Round(time.Second))
+			if att.Mastered() {
+				ui.OK("this exercise now counts as mastered")
+			}
+			ui.Info("Finish with `dojo stop`, then return to `dojo learn %s`.", a.Module.Name)
+			return nil
+		},
+	}
+}
+
 func newGradeCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "grade",
@@ -323,6 +447,10 @@ equally correct if they leave the cluster in the required state.`,
 			if a.State.Mode == config.ModeExam {
 				return fmt.Errorf("grading is hidden during an exam; finish it with `dojo exam finish`")
 			}
+			if len(a.Plan.Checkpoints) > 0 && a.State.Checkpoint < len(a.Plan.Checkpoints) {
+				return fmt.Errorf("complete checkpoint %d of %d with `dojo check` before final grading",
+					a.State.Checkpoint+1, len(a.Plan.Checkpoints))
+			}
 			if err := requireRunning(cmd.Context(), a.Env); err != nil {
 				return err
 			}
@@ -337,21 +465,9 @@ equally correct if they leave the cluster in the required state.`,
 			ui.Blank()
 			printReport(rep)
 
-			firstPass := rep.Passed && !a.State.Passed
-			prog, err := progress.Load()
+			att, err := recordGrade(a, rep.Passed)
 			if err != nil {
 				return err
-			}
-			att := prog.RecordGrade(a.Lab.ID, rep.Passed, firstPass,
-				a.State.Elapsed(), a.State.HintsUsed, a.State.SolutionRead)
-			if err := prog.Save(); err != nil {
-				return err
-			}
-			if firstPass {
-				a.State.Passed = true
-				if err := config.SaveState(a.State); err != nil {
-					return err
-				}
 			}
 
 			ui.Blank()
@@ -375,6 +491,26 @@ equally correct if they leave the cluster in the required state.`,
 			return nil
 		},
 	}
+}
+
+func recordGrade(a *active, passed bool) (*progress.Attempt, error) {
+	firstPass := passed && !a.State.Passed
+	history, err := progress.Load()
+	if err != nil {
+		return nil, err
+	}
+	att := history.RecordGrade(a.Lab.ID, passed, firstPass,
+		a.State.Elapsed(), a.State.HintsUsed, a.State.SolutionRead)
+	if err := history.Save(); err != nil {
+		return nil, err
+	}
+	if firstPass {
+		a.State.Passed = true
+		if err := config.SaveState(a.State); err != nil {
+			return nil, err
+		}
+	}
+	return att, nil
 }
 
 func printReport(rep *lab.Report) {
@@ -496,6 +632,7 @@ still looks wrong afterwards, ` + "`dojo env reset`" + ` rebuilds the whole thin
 			}
 			a.State.StartedAt = time.Now()
 			a.State.Passed = false
+			a.State.Checkpoint = 0
 			if err := config.SaveState(a.State); err != nil {
 				return err
 			}
@@ -580,6 +717,9 @@ func newStatusCmd(app *App) *cobra.Command {
 			}
 			if st.Passed {
 				rows = append(rows, []string{"graded", "passed"})
+			}
+			if l != nil && len(l.Checkpoints) > 0 {
+				rows = append(rows, []string{"checkpoint", fmt.Sprintf("%d/%d", st.Checkpoint, len(l.Checkpoints))})
 			}
 			ui.Table(nil, rows)
 			return nil

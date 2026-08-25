@@ -1,0 +1,72 @@
+schemaVersion: 1
+id: services-follow
+title: Create and expose a healthy web workload
+learningStage: follow
+domain:
+  - services-networking
+skills:
+  - services
+  - selectors
+difficulty: 1
+targetMinutes: 5
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/baseline.yaml
+
+checkpoints:
+  - id: deployment
+    task: |
+      Create the example exactly as shown:
+
+      ```bash
+      kubectl -n dojo-services-follow create deployment web --image=nginx:1.27-alpine --replicas=2
+      ```
+
+      Wait until both replicas are ready, then run `dojo check` on the host.
+    grading:
+      all:
+        - type: deploymentAvailable
+          namespace: dojo-services-follow
+          name: web
+          minReplicas: 2
+  - id: service
+    task: |
+      Expose the Deployment exactly as shown:
+
+      ```bash
+      kubectl -n dojo-services-follow expose deployment web --name=web --port=80 --target-port=80
+      ```
+
+      Inspect the Service and its EndpointSlice, then run `dojo check`.
+    grading:
+      all:
+        - type: serviceHasEndpoints
+          namespace: dojo-services-follow
+          name: web
+          port: 80
+          minEndpoints: 2
+
+grading:
+  all:
+    - type: deploymentAvailable
+      namespace: dojo-services-follow
+      name: web
+      minReplicas: 2
+    - type: serviceHasEndpoints
+      namespace: dojo-services-follow
+      name: web
+      port: 80
+      minEndpoints: 2
+    - type: httpService
+      namespace: dojo-services-follow
+      service: web
+      port: 80
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-services-follow
