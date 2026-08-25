@@ -166,9 +166,11 @@ func (m *Manager) Destroy(ctx context.Context) error {
 
 // nodeIP returns a node's address on the environment network.
 //
-// This cannot be skipped: Lima's default-route interface holds the same
-// address (192.168.5.15) inside every VM, so anything that defaults to "the
-// primary IP" would register all nodes identically.
+// The address is discovered by matching the profile's subnet rather than by
+// taking "the primary interface", because the interface layout depends on how
+// the provider is configured. Lima's default user-mode network gives every VM
+// the same address (192.168.5.15); the user-v2 network replaces that NIC and
+// hands out distinct ones. Matching the subnet is correct either way.
 func (m *Manager) nodeIP(ctx context.Context, node string) (string, error) {
 	m.mu.Lock()
 	if ip, ok := m.ips[node]; ok {

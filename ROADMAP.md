@@ -42,7 +42,7 @@ Bumping the exam to a new minor should touch **only** those YAML files.
 
 ## 3. Milestones
 
-### Milestone 1 - foundation - `in progress`
+### Milestone 1 - foundation - `done`
 
 Go CLI, config/state, provider interface, Lima provider, `doctor`, environment
 profiles, `standard` provisioning, `setup`, `shell`, `env` subcommands.
@@ -50,21 +50,22 @@ profiles, `standard` provisioning, `setup`, `shell`, `env` subcommands.
 Success criterion: `dojo setup && dojo shell` lands you in a working kubeadm
 cluster.
 
-### Milestone 2 - lab engine - `in progress`
+### Milestone 2 - lab engine - `done`
 
 Lab schema + loader, `start` / `task` / `reset` / `grade` / `hint` / `solution`,
 fault primitives, grader framework, three reference labs, `content validate`.
 
 Implemented fault primitives: `kubernetesApply`, `kubernetesPatch`,
-`kubernetesDelete`, `systemdStop`.
-Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `authCanI`,
-`nodeService`, `command`, `objectExists`, `jsonPath`.
+`kubernetesDelete`, `kubernetesScale`, `systemdStop`, `fileReplace`, `nodeExec`.
+Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `httpService`,
+`authCanI`, `nodeReady`, `nodeService`, `nodeFile`, `command`, `objectExists`,
+`jsonPath`.
 
 ### Milestone 3 - learning UX - `next`
 
 - [ ] `dojo learn <module>` renders `lesson.md` with a pager
 - [ ] Write lessons for the modules backing the six reference labs
-- [ ] `dojo progress` skill table (schema already recorded by the engine)
+- [x] `dojo progress` skill table and `--by-lab` attempt history
 - [ ] `dojo recommend` = exam weight x lack of mastery x recency
 - [ ] `dojo tutor-context` (must never leak fault or grader detail)
 - [ ] Mastery rule: >=2 passes AND latest pass used 0 hints
@@ -112,9 +113,11 @@ exam UI.
 4. **Grade state, not commands.** Any route to the correct state passes.
 5. **Content never enters the guest.** Only rendered task text does; manifests
    are staged to cp1, applied, then deleted. Solutions/graders stay on the host.
-6. **Explicit `--node-ip` everywhere.** Lima's default route NIC is
-   192.168.5.15 on *every* VM; without an explicit node IP on the `user-v2`
-   address, kubelet registers all nodes with the same IP.
+6. **Addresses are discovered by subnet, and `--node-ip` is explicit.** Lima's
+   interface layout depends on configuration - the default user-mode network
+   gives every VM the same address (192.168.5.15), while `user-v2` replaces
+   that NIC with a distinct 192.168.104.x. Matching `network.subnet` and
+   pinning `--node-ip` is correct under either.
 7. **No VM snapshots.** Soft reset (re-apply baseline + re-inject fault) for the
    normal case, `dojo env reset` as the guaranteed escape hatch.
 8. **Provider is node-granular** (`EnsureNode`, `Exec`, `CopyTo`, ...) and
@@ -132,3 +135,22 @@ exam UI.
   in the window before they are deleted. Acceptable for a self-study tool.
 - No integration CI yet; PR CI runs `go vet`, `go test`, `content validate`
   with a fake provider only.
+
+## 7. Verification log
+
+2026-08-25, macOS arm64, Lima 2.2.0:
+
+- Cold `standard` environment build completed in 3m49s after the Ubuntu image
+  was available; cp1, worker1 and worker2 registered Ready on Kubernetes 1.35.8.
+- `dojo shell` reached the terminal as `student`; SSH to worker1 worked.
+- All three `services-no-endpoints` variants failed before repair; a student
+  fix passed all object, EndpointSlice and in-cluster HTTP checks; soft reset
+  re-injected the fault and immediate stop/start no longer races namespace
+  deletion.
+- `rbac-namespace-reader` denied the required access before repair and passed
+  all positive and negative authorization checks after a Role/RoleBinding fix.
+- Both `node-not-ready` variants produced a NotReady worker. Repairing kubelet
+  passed; ending the containerd variant restored and re-enabled the service.
+- Live testing found and fixed four engine defects: first-run Lima SSH-key
+  creation races, EndpointSlice null handling, misplaced probe namespace flags,
+  and stdin-consuming guest commands truncating streamed scripts.

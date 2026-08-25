@@ -74,9 +74,10 @@ image-endpoint: unix:///run/containerd/containerd.sock
 timeout: 10
 CRICTL
 
-# Every Lima VM has the same address (192.168.5.15) on its default-route
-# interface. Without an explicit node IP, every node would register with an
-# identical address and the cluster would be nonsense.
+# Pin the node IP to this node's address on the environment network. Leaving
+# kubelet to choose means trusting whatever interface layout the provider
+# happens to give us -- and Lima's default user-mode network hands every VM the
+# same address, which would register every node identically.
 cat > /etc/default/kubelet <<'KUBELET'
 KUBELET_EXTRA_ARGS=--node-ip={{.NodeIP}}
 KUBELET

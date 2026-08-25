@@ -30,6 +30,11 @@ func (r *Runner) faultContext() *fault.Context {
 // Setup builds the scenario: baseline first, then the faults, so the learner
 // meets a cluster that was working and then broke.
 func (r *Runner) Setup(ctx context.Context) error {
+	// A previous attempt's namespaces may still be terminating: deletion is
+	// asynchronous, and applying into a terminating namespace fails.
+	if err := r.waitGone(ctx); err != nil {
+		return fmt.Errorf("the previous scenario has not finished tearing down: %w", err)
+	}
 	for _, manifest := range r.Plan.Manifests {
 		data, err := fs.ReadFile(r.Plan.Lab.Files, manifest)
 		if err != nil {
@@ -105,14 +110,11 @@ func (r *Runner) Reset(ctx context.Context) error {
 		ui.Warn("cleanup was incomplete: %v", err)
 		ui.Info("   if the lab still misbehaves, run `dojo env reset`")
 	}
-	if err := r.waitGone(ctx); err != nil {
-		ui.Detail("proceeding despite lingering objects: %v", err)
-	}
 	return r.Setup(ctx)
 }
 
-// waitGone gives namespace deletion a moment to finish, since re-applying
-// into a terminating namespace fails.
+// waitGone blocks until every namespace this lab creates is absent. It
+// returns immediately on a first run, when there is nothing to wait for.
 func (r *Runner) waitGone(ctx context.Context) error {
 	namespaces := map[string]bool{}
 	for _, manifest := range r.Plan.Manifests {

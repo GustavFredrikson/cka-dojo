@@ -267,9 +267,23 @@ func printTask(l *lab.Lab, st *config.State) {
 	ui.Info("lab %s  |  target %d minutes  |  difficulty %s  |  seed %d",
 		l.ID, l.TargetMinutes, strings.Repeat("*", l.Difficulty), st.Seed)
 	ui.Blank()
-	ui.Markdown(task)
+	// task.md repeats the title as an H1 so it reads well on its own; drop it
+	// here rather than printing the same line twice.
+	ui.Markdown(stripLeadingHeading(task))
 	ui.Blank()
 	ui.Info("Work in `dojo shell`. Check your work with `dojo grade`.")
+}
+
+// stripLeadingHeading removes a leading level-one Markdown heading.
+func stripLeadingHeading(text string) string {
+	trimmed := strings.TrimLeft(text, "\n")
+	if !strings.HasPrefix(trimmed, "# ") {
+		return text
+	}
+	if i := strings.Index(trimmed, "\n"); i >= 0 {
+		return strings.TrimLeft(trimmed[i+1:], "\n")
+	}
+	return ""
 }
 
 func newTaskCmd(app *App) *cobra.Command {

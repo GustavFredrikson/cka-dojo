@@ -1,0 +1,129 @@
+# cka-dojo
+
+CKA practice on real, disposable Kubernetes clusters.
+
+`dojo` builds a four-machine kubeadm cluster in local VMs, breaks it on
+purpose, and grades **the state you leave behind** rather than the commands you
+type. Fix a Service with `kubectl edit`, a patch, or a rewritten manifest — all
+three pass, exactly as they would on the exam.
+
+```
+$ dojo start services-no-endpoints
+
+A Service that does not answer
+lab services-no-endpoints  |  target 6 minutes  |  difficulty *  |  seed 4471902
+
+The `shop` namespace runs a small web application behind a ClusterIP Service
+called `web`.
+
+The Pods are healthy. Requests sent to the Service do not reach them.
+
+Restore connectivity through the existing Service `web`, on port 80.
+
+Work in `dojo shell`. Check your work with `dojo grade`.
+```
+
+Note what the task does *not* say: what is broken.
+
+## Requirements
+
+- macOS on Apple Silicon (the only combination that is exercised today)
+- 16 GiB of RAM, 40 GiB of free disk
+- [Lima](https://lima-vm.io): `brew install lima`
+- Go 1.25+ to build
+
+## Getting started
+
+```bash
+make build && ./bin/dojo doctor
+```
+
+`doctor` checks the host, the dependencies and the content before you spend
+twenty minutes provisioning a cluster that was never going to work.
+
+```bash
+./bin/dojo setup
+```
+
+The first build downloads an OS image and installs packages; expect 15–25
+minutes. It is idempotent and resumable — interrupt it and run it again.
+
+```bash
+./bin/dojo shell
+```
+
+That drops you onto the workstation as `student`, with `kubectl`, `helm`,
+completions and a working kubeconfig. From there `ssh cp1`, `ssh worker1` and
+`ssh worker2` all work.
+
+## The loop
+
+```bash
+dojo labs                  # what is available
+dojo start <lab>           # build the scenario, print the task
+dojo shell                 # go and fix it
+dojo grade                 # check the cluster against the requirements
+dojo hint                  # a nudge, one level at a time, recorded
+dojo solution              # a worked answer
+dojo reset                 # rebuild this scenario
+dojo stop                  # end the lab and clean up
+```
+
+Environment management:
+
+```bash
+dojo env status            # machines, addresses, Kubernetes nodes
+dojo env list              # every profile on this machine
+dojo env stop              # shut down, keep the disks
+dojo env reset             # destroy and rebuild -- the escape hatch
+```
+
+## What gets built
+
+```
+                       lima user-v2 network
+                       192.168.104.0/24
+       ┌───────────────┬───────────────┬───────────────┐
+       │               │               │               │
+   terminal           cp1           worker1         worker2
+   kubectl/helm    kubeadm          kubelet         kubelet
+   1 GiB           3 GiB            2.5 GiB         2.5 GiB
+```
+
+Roughly 9 GiB of guest memory. Ubuntu 24.04, containerd, Kubernetes 1.35.8,
+Calico, metrics-server.
+
+The workstation is deliberately **not** part of the cluster. That is what lets
+a lab stop the kubelet on a worker, or corrupt a control-plane manifest,
+without also breaking the shell you are working from.
+
+## Repeating a lab does not mean repeating the answer
+
+Labs can declare variants. `dojo start node-not-ready` might stop the kubelet,
+or it might stop containerd — same symptom in `kubectl get nodes`, different
+diagnosis. The choice comes from a seed that is printed and recorded, so a
+scenario can be reproduced exactly:
+
+```bash
+dojo start node-not-ready --seed 9182731
+```
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [ROADMAP.md](ROADMAP.md) | What exists, what is next, which decisions are settled |
+| [docs/architecture.md](docs/architecture.md) | How the engine, provider and content fit together |
+| [docs/authoring-labs.md](docs/authoring-labs.md) | Writing a lab: schema, faults, graders, hints |
+| [docs/curriculum.md](docs/curriculum.md) | Domains, skills, modules, and how progress is scored |
+| [docs/AI_TUTOR.md](docs/AI_TUTOR.md) | Using an AI assistant as a tutor, without it giving the game away |
+
+## Development
+
+```bash
+make check        # go vet, go test, dojo content validate
+make validate     # content linting on its own
+```
+
+`DOJO_CONTENT=$PWD ./bin/dojo ...` reads curriculum and environments from the
+working tree instead of the copy embedded in the binary.

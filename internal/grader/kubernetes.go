@@ -2,6 +2,7 @@ package grader
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -273,10 +274,15 @@ func (s *ServiceHasEndpoints) Check(ctx context.Context, env *environment.Manage
 
 	// EndpointSlices, not the deprecated Endpoints object: this is what the
 	// current control plane and the current curriculum both use.
+	//
+	// Read them as JSON and count here rather than with a jsonpath template:
+	// a slice with no endpoints at all serialises `endpoints` as null, which
+	// makes a jsonpath range fail outright instead of yielding nothing -- and
+	// "no endpoints" is precisely the case this grader exists to detect.
 	args := nsArgs([]string{
 		"get", "endpointslice",
 		"-l", "kubernetes.io/service-name=" + s.Name,
-		"-o", "jsonpath={range .items[*]}{range .endpoints[?(@.conditions.ready==true)]}{.addresses[0]}{\"\\n\"}{end}{end}",
+		"-o", "json",
 	}, s.Namespace)
 	res, err := env.KubectlRaw(ctx, args...)
 	if err != nil {
@@ -285,7 +291,10 @@ func (s *ServiceHasEndpoints) Check(ctx context.Context, env *environment.Manage
 	if res.ExitCode != 0 {
 		return fail(s.Describe(), "cannot read endpoint slices: %s", firstLine(res.Stderr))
 	}
-	count := len(nonEmptyLines(res.Stdout))
+	count, err := countReadyEndpoints(res.Stdout)
+	if err != nil {
+		return broken(s.Describe(), err)
+	}
 	if count >= s.want() {
 		return pass(s.Describe())
 	}
@@ -409,15 +418,11 @@ func (h *HTTPService) Describe() string {
 func (h *HTTPService) Check(ctx context.Context, env *environment.Manager) Result {
 	url := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s", h.Service, ns(h.Namespace), h.Port, h.Path)
 	name := fmt.Sprintf("dojo-probe-%d", nowNano()%100000)
-	args := []string{
-		"run", name,
-		"--image=" + h.image(),
-		"--restart=Never", "--rm", "-i", "--quiet",
-		"--command", "--",
-		"wget", "-q", "-O-", "-T", "10", url,
-	}
-	args = nsArgs(args, h.Namespace)
-	res, err := env.KubectlRaw(ctx, args...)
+	// The namespace flag belongs to kubectl, so it has to go in before the
+	// `--` separator; after it, it would be handed to wget instead. The probe
+	// runs in the Service's own namespace so that NetworkPolicy labs see the
+	// traffic they are meant to see.
+	res, err := env.KubectlRaw(ctx, h.probeArgs(url, name)...)
 	if err != nil {
 		return broken(h.Describe(), err)
 	}
@@ -425,6 +430,22 @@ func (h *HTTPService) Check(ctx context.Context, env *environment.Manager) Resul
 		return pass(h.Describe())
 	}
 	return fail(h.Describe(), "the request failed: %s", firstLine(res.Stderr+res.Stdout))
+}
+
+// probeArgs builds the kubectl invocation for one probe. It is separate so a
+// test can assert the flag ordering without a cluster.
+func (h *HTTPService) probeArgs(url string, name ...string) []string {
+	podName := "dojo-probe"
+	if len(name) > 0 {
+		podName = name[0]
+	}
+	args := []string{
+		"run", podName,
+		"--image=" + h.image(),
+		"--restart=Never", "--rm", "-i", "--quiet",
+	}
+	args = nsArgs(args, h.Namespace)
+	return append(args, "--command", "--", "wget", "-q", "-O-", "-T", "10", url)
 }
 
 func containsField(s, want string) bool {
@@ -457,4 +478,35 @@ func firstLine(s string) string {
 		}
 	}
 	return "no output"
+}
+
+// endpointSliceList is the slice of the EndpointSlice API this grader needs.
+type endpointSliceList struct {
+	Items []struct {
+		Endpoints []struct {
+			Addresses  []string `json:"addresses"`
+			Conditions struct {
+				Ready *bool `json:"ready"`
+			} `json:"conditions"`
+		} `json:"endpoints"`
+	} `json:"items"`
+}
+
+// countReadyEndpoints counts addresses that are ready to receive traffic. A
+// nil `ready` means ready, per the EndpointSlice API.
+func countReadyEndpoints(raw string) (int, error) {
+	var list endpointSliceList
+	if err := json.Unmarshal([]byte(raw), &list); err != nil {
+		return 0, fmt.Errorf("parse endpoint slices: %w", err)
+	}
+	count := 0
+	for _, item := range list.Items {
+		for _, ep := range item.Endpoints {
+			if ep.Conditions.Ready != nil && !*ep.Conditions.Ready {
+				continue
+			}
+			count += len(ep.Addresses)
+		}
+	}
+	return count, nil
 }

@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gustavfredrikson/cka-dojo/internal/provider"
 	"github.com/gustavfredrikson/cka-dojo/internal/ui"
@@ -159,7 +160,6 @@ func instanceYAML(spec provider.NodeSpec) string {
 	b.WriteString("minimumLimaVersion: 2.0.0\n")
 	b.WriteString("base:\n- template:_images/ubuntu-24.04\n")
 	b.WriteString("vmType: vz\n")
-	b.WriteString("rosetta:\n  enabled: false\n  binfmt: false\n")
 	fmt.Fprintf(&b, "cpus: %d\n", spec.CPUs)
 	fmt.Fprintf(&b, "memory: %q\n", spec.Memory)
 	fmt.Fprintf(&b, "disk: %q\n", spec.Disk)
@@ -183,6 +183,40 @@ func instanceYAML(spec provider.NodeSpec) string {
 `, spec.Hostname, spec.Hostname)
 	}
 	return b.String()
+}
+
+// createMu serialises instance creation while Lima's shared SSH key is still
+// missing. On a first run, several concurrent `limactl start` calls each try
+// to generate ~/.lima/_config/user; the losers hit an interactive "overwrite?"
+// prompt and die. Once the key exists, creation runs in parallel again.
+var createMu sync.Mutex
+
+// identityFile reports the path of Lima's shared SSH key.
+func (p *Provider) identityFile(ctx context.Context) string {
+	out, _, err := p.run(ctx, nil, "info")
+	if err != nil {
+		return ""
+	}
+	var info struct {
+		IdentityFile string `json:"identityFile"`
+	}
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return ""
+	}
+	return info.IdentityFile
+}
+
+// serialiseFirstCreate returns a function to call when the create finishes.
+func (p *Provider) serialiseFirstCreate(ctx context.Context) func() {
+	id := p.identityFile(ctx)
+	if id != "" {
+		if _, err := os.Stat(id); err == nil {
+			return func() {}
+		}
+	}
+	ui.Detail("lima has no shared SSH key yet; creating the first instance on its own")
+	createMu.Lock()
+	return createMu.Unlock
 }
 
 // EnsureNode implements provider.Provider.
@@ -209,6 +243,9 @@ func (p *Provider) EnsureNode(ctx context.Context, spec provider.NodeSpec) error
 	if err := os.WriteFile(yamlPath, []byte(instanceYAML(spec)), 0o644); err != nil {
 		return err
 	}
+	done := p.serialiseFirstCreate(ctx)
+	defer done()
+
 	ui.Detail("creating lima instance %s", spec.Name)
 	_, stderr, err := p.run(ctx, nil, "start", "--tty=false", "--name="+spec.Name, yamlPath)
 	if err != nil {
@@ -255,10 +292,40 @@ func (p *Provider) DestroyNode(ctx context.Context, name string) error {
 	return nil
 }
 
-// Exec implements provider.Provider.
+// wrapScript prepares a script for execution in a guest.
 //
-// The script travels on stdin rather than in argv: that removes every quoting
-// question about how limactl and ssh reassemble a command line.
+// The script travels on stdin rather than in argv, which removes every quoting
+// question about how limactl and ssh reassemble a command line. But a script
+// read straight from stdin by `bash -s` is executed as it arrives, so any
+// command inside it that reads stdin -- ssh, read, a piped-in apt prompt --
+// swallows the rest of the script and the tail silently never runs.
+//
+// So the wrapper writes the real script to a file and runs it with stdin
+// closed. Base64 keeps the payload free of anything the outer shell could
+// interpret.
+func wrapScript(script string) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(script))
+	var b strings.Builder
+	b.WriteString("umask 077\n")
+	b.WriteString("f=$(mktemp /tmp/dojo-exec.XXXXXXXX) || exit 90\n")
+	b.WriteString("base64 -d > \"$f\" <<'DOJO_EXEC_B64'\n")
+	for i := 0; i < len(enc); i += 76 {
+		end := i + 76
+		if end > len(enc) {
+			end = len(enc)
+		}
+		b.WriteString(enc[i:end])
+		b.WriteString("\n")
+	}
+	b.WriteString("DOJO_EXEC_B64\n")
+	b.WriteString("bash \"$f\" </dev/null\n")
+	b.WriteString("rc=$?\n")
+	b.WriteString("rm -f \"$f\"\n")
+	b.WriteString("exit $rc\n")
+	return b.String()
+}
+
+// Exec implements provider.Provider.
 func (p *Provider) Exec(ctx context.Context, name string, opts provider.ExecOptions) (provider.ExecResult, error) {
 	args := []string{"shell", name, "--"}
 	switch opts.User {
@@ -270,7 +337,7 @@ func (p *Provider) Exec(ctx context.Context, name string, opts provider.ExecOpti
 		args = append(args, "sudo", "-H", "-u", opts.User, "bash", "-s")
 	}
 	cmd := exec.CommandContext(ctx, p.bin(), args...)
-	cmd.Stdin = strings.NewReader(opts.Script)
+	cmd.Stdin = strings.NewReader(wrapScript(opts.Script))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
