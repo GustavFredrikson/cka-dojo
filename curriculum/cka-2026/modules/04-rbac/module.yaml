@@ -1,0 +1,9 @@
+id: 04-rbac
+name: RBAC
+summary: >-
+  Subjects, Roles and bindings, and letting the API server tell you whether a
+  permission is really in place.
+domains:
+  - cluster-architecture
+labs:
+  - rbac-namespace-reader

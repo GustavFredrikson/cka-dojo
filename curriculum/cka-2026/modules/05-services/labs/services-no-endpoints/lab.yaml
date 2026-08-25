@@ -1,0 +1,102 @@
+schemaVersion: 1
+id: services-no-endpoints
+title: A Service that does not answer
+domain:
+  - services-networking
+  - troubleshooting
+skills:
+  - services
+  - selectors
+  - endpointslices
+  - service-debugging
+difficulty: 1
+targetMinutes: 6
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/baseline.yaml
+  # Let the Deployment settle before anything is broken, so the learner is not
+  # diagnosing a workload that was merely still starting.
+  waitReady:
+    - namespace: shop
+      kind: deployment
+      name: web
+
+# Three ways for the same symptom to happen. Repeating this lab should train
+# diagnosis, not recall of which field was wrong last time.
+variants:
+  options:
+    - id: selector-mismatch
+      faults:
+        - type: kubernetesPatch
+          resource: service/web
+          namespace: shop
+          patch:
+            spec:
+              selector:
+                app: web-frontend
+    - id: numeric-target-port
+      faults:
+        - type: kubernetesPatch
+          resource: service/web
+          namespace: shop
+          patch:
+            spec:
+              ports:
+                - name: http
+                  port: 80
+                  targetPort: 8080
+                  protocol: TCP
+    - id: unknown-named-port
+      faults:
+        - type: kubernetesPatch
+          resource: service/web
+          namespace: shop
+          patch:
+            spec:
+              ports:
+                - name: http
+                  port: 80
+                  targetPort: https
+                  protocol: TCP
+
+grading:
+  all:
+    - type: deploymentAvailable
+      namespace: shop
+      name: web
+      minReplicas: 2
+    - type: serviceHasEndpoints
+      namespace: shop
+      name: web
+      port: 80
+      minEndpoints: 2
+    - type: httpService
+      namespace: shop
+      service: web
+      port: 80
+
+hints:
+  - Start from how a Service discovers the Pods it should send traffic to.
+  - Look at the EndpointSlices for the Service, not just the Service itself.
+  - |
+    Two things have to line up: the Service's selector against the Pods'
+    labels, and the Service's targetPort against the port the container
+    actually listens on.
+  - |
+    Commands worth running:
+
+    ```
+    kubectl -n shop get pods --show-labels
+    kubectl -n shop describe svc web
+    kubectl -n shop get endpointslice -l kubernetes.io/service-name=web -o yaml
+    kubectl -n shop get deploy web -o jsonpath='{.spec.template.spec.containers[0].ports}'
+    ```
+
+exam:
+  eligible: true
+conflicts:
+  - namespace:shop

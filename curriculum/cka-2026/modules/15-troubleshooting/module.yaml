@@ -1,0 +1,10 @@
+id: 15-troubleshooting
+name: Mixed troubleshooting
+summary: >-
+  Broken clusters with no hint about what broke. The largest module by design:
+  troubleshooting is 30% of the exam.
+domains:
+  - troubleshooting
+  - cluster-architecture
+labs:
+  - node-not-ready

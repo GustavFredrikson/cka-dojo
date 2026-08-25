@@ -1,0 +1,64 @@
+# The CKA content set. One curriculum directory per exam revision: when the
+# exam moves to a new Kubernetes minor, this file and the environment profiles
+# are the only things that should need editing.
+schemaVersion: 1
+id: cka-2026
+
+certification:
+  name: CKA
+  curriculumRevision: "2025-02-18"
+
+kubernetes:
+  # The exam's minor version, which lags upstream on purpose.
+  minor: "1.35"
+
+# Published domain weightings. The mock exam generator samples against these.
+domains:
+  - id: troubleshooting
+    name: Troubleshooting
+    weight: 30
+  - id: cluster-architecture
+    name: Cluster Architecture, Installation and Configuration
+    weight: 25
+  - id: services-networking
+    name: Services and Networking
+    weight: 20
+  - id: workloads-scheduling
+    name: Workloads and Scheduling
+    weight: 15
+  - id: storage
+    name: Storage
+    weight: 10
+
+# Progress is tracked per skill, not per lab: "26 of 50 labs done" says nothing
+# about whether you can fix a Service under time pressure.
+skills:
+  - id: services
+    name: Services
+  - id: selectors
+    name: Label selectors
+  - id: endpointslices
+    name: EndpointSlices
+  - id: service-debugging
+    name: Service troubleshooting
+  - id: rbac
+    name: RBAC
+  - id: roles
+    name: Roles and ClusterRoles
+  - id: rolebindings
+    name: Bindings
+  - id: authorization-checks
+    name: Verifying authorization
+  - id: kubelet
+    name: kubelet
+  - id: containerd
+    name: Container runtime
+  - id: node-troubleshooting
+    name: Node troubleshooting
+  - id: systemd
+    name: systemd on cluster nodes
+
+modules:
+  - 04-rbac
+  - 05-services
+  - 15-troubleshooting

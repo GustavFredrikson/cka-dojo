@@ -42,7 +42,7 @@ Bumping the exam to a new minor should touch **only** those YAML files.
 
 ## 3. Milestones
 
-### Milestone 1 - foundation - `done`
+### Milestone 1 - foundation - `in progress`
 
 Go CLI, config/state, provider interface, Lima provider, `doctor`, environment
 profiles, `standard` provisioning, `setup`, `shell`, `env` subcommands.
@@ -50,7 +50,7 @@ profiles, `standard` provisioning, `setup`, `shell`, `env` subcommands.
 Success criterion: `dojo setup && dojo shell` lands you in a working kubeadm
 cluster.
 
-### Milestone 2 - lab engine - `done`
+### Milestone 2 - lab engine - `in progress`
 
 Lab schema + loader, `start` / `task` / `reset` / `grade` / `hint` / `solution`,
 fault primitives, grader framework, three reference labs, `content validate`.

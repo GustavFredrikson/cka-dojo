@@ -1,0 +1,53 @@
+# The everyday CKA training environment: a workstation plus a one-control-plane,
+# two-worker kubeadm cluster. Roughly 9 GiB of guest RAM.
+#
+# Versions here are deliberate pins, not "latest". The exam tracks a Kubernetes
+# minor that lags upstream, so bumping these is an explicit decision.
+schemaVersion: 1
+id: standard
+description: Workstation + 1 control plane + 2 workers, kubeadm, Calico
+
+provisioning: kubeadm
+
+kubernetes:
+  # Exam minor is 1.35; this is the newest patch on that line.
+  version: "1.35.8"
+  # Must not overlap the node network below.
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+
+cni:
+  provider: calico
+  # The 3.32 line is tested against Kubernetes 1.34-1.36.
+  version: "v3.32.1"
+
+addons:
+  metricsServer: "v0.9.0"
+  # Helm 3 rather than 4: most CKA material still assumes v3 semantics.
+  helm: "v3.21.4"
+
+network:
+  lima: user-v2
+  subnet: "192.168.104.0/24"
+
+nodes:
+  - name: terminal
+    role: workstation
+    cpus: 2
+    memory: "1GiB"
+    disk: "16GiB"
+  - name: cp1
+    role: control-plane
+    cpus: 2
+    memory: "3GiB"
+    disk: "24GiB"
+  - name: worker1
+    role: worker
+    cpus: 2
+    memory: "2500MiB"
+    disk: "24GiB"
+  - name: worker2
+    role: worker
+    cpus: 2
+    memory: "2500MiB"
+    disk: "24GiB"

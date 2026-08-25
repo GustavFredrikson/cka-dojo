@@ -1,0 +1,102 @@
+schemaVersion: 1
+id: node-not-ready
+title: A worker has stopped reporting in
+domain:
+  - troubleshooting
+  - cluster-architecture
+skills:
+  - kubelet
+  - containerd
+  - node-troubleshooting
+  - systemd
+difficulty: 2
+targetMinutes: 8
+
+environment:
+  profile: standard
+
+# Two different services can take a node down, and the symptom in
+# `kubectl get nodes` is identical. Which one it is has to be diagnosed on the
+# node itself.
+variants:
+  options:
+    - id: kubelet-stopped
+      faults:
+        - type: systemdStop
+          node: worker1
+          unit: kubelet
+          disable: true
+      grading:
+        all:
+          - type: nodeService
+            node: worker1
+            unit: kubelet
+            state: active
+            enabled: true
+          - type: nodeReady
+            node: worker1
+            ready: true
+            schedulable: true
+      hints:
+        - The API server can only report what a node tells it. Ask what stopped
+          telling it.
+        - Every worker runs two services that matter here. Get onto the node
+          and look at both.
+        - |
+          `ssh worker1`, then work through systemd: which unit is not running,
+          and does it stay stopped after a reboot?
+        - |
+          Useful commands on the node:
+
+          ```
+          systemctl status kubelet containerd
+          systemctl is-enabled kubelet
+          journalctl -u kubelet --no-pager -n 50
+          ```
+
+    - id: containerd-stopped
+      faults:
+        - type: systemdStop
+          node: worker1
+          unit: containerd
+          disable: true
+      grading:
+        all:
+          - type: nodeService
+            node: worker1
+            unit: containerd
+            state: active
+            enabled: true
+          - type: nodeService
+            node: worker1
+            unit: kubelet
+            state: active
+          - type: nodeReady
+            node: worker1
+            ready: true
+            schedulable: true
+      hints:
+        - The API server can only report what a node tells it. Ask what stopped
+          telling it.
+        - Every worker runs two services that matter here. Get onto the node
+          and look at both.
+        - |
+          The kubelet can be running and still be unable to do its job. Read
+          its logs and see what it is complaining that it cannot reach.
+        - |
+          Useful commands on the node:
+
+          ```
+          systemctl status kubelet containerd
+          journalctl -u kubelet --no-pager -n 50
+          crictl ps
+          ```
+
+hints:
+  - Find out which node is unhealthy, then get onto it.
+
+exam:
+  eligible: true
+conflicts:
+  - worker1.kubelet
+  - worker1.containerd

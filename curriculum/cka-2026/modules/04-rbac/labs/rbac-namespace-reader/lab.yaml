@@ -1,0 +1,106 @@
+schemaVersion: 1
+id: rbac-namespace-reader
+title: Read-only access to one namespace
+domain:
+  - cluster-architecture
+skills:
+  - rbac
+  - roles
+  - rolebindings
+  - authorization-checks
+difficulty: 2
+targetMinutes: 8
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/baseline.yaml
+  waitReady:
+    - namespace: backend
+      kind: deployment
+      name: api
+
+# Grading asks the API server what a subject may do. Any route to the right
+# answer counts: imperative kubectl, a written manifest, or kubectl edit.
+grading:
+  all:
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: get
+      resource: pods
+      expect: true
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: list
+      resource: pods
+      expect: true
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: watch
+      resource: pods
+      expect: true
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: get
+      resource: deployments
+      expect: true
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: delete
+      resource: pods
+      expect: false
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: create
+      resource: pods
+      expect: false
+    - type: authCanI
+      user: alice
+      namespace: backend
+      verb: get
+      resource: secrets
+      expect: false
+    - type: authCanI
+      user: alice
+      namespace: default
+      verb: get
+      resource: pods
+      expect: false
+    - type: authCanI
+      user: alice
+      namespace: kube-system
+      verb: list
+      resource: pods
+      expect: false
+
+hints:
+  - >-
+    Two objects are involved: one that describes permissions, and one that ties
+    those permissions to a subject.
+  - >-
+    The permission must apply in one namespace only, which rules out one of the
+    two available pairs of object kinds.
+  - |
+    Read verbs on Pods are `get`, `list` and `watch`. Deployments live in the
+    `apps` API group, which a Role has to name explicitly.
+  - |
+    Useful commands:
+
+    ```
+    kubectl -n backend create role NAME --verb=get,list,watch --resource=pods
+    kubectl -n backend create rolebinding NAME --role=NAME --user=alice
+    kubectl auth can-i list pods -n backend --as alice
+    ```
+
+exam:
+  eligible: true
+conflicts:
+  - namespace:backend

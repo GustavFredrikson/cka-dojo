@@ -1,0 +1,10 @@
+id: 05-services
+name: Services
+summary: >-
+  How a Service finds its backends, and how to work backwards from "it does not
+  answer" to the one field that is wrong.
+domains:
+  - services-networking
+  - troubleshooting
+labs:
+  - services-no-endpoints
