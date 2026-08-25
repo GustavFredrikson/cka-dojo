@@ -38,6 +38,10 @@ func formatTutorContext(cur *curriculum.Curriculum, module *curriculum.Module, e
 	if mode == "" {
 		mode = config.ModePractice
 	}
+	stage := "unknown"
+	if info, ok := exercise.LearningStage.Info(); ok {
+		stage = fmt.Sprintf("%d — %s", info.Level, info.Name)
+	}
 	lines := []string{
 		"CKA Dojo tutor context",
 		"Curriculum: " + cur.ID,
@@ -45,6 +49,7 @@ func formatTutorContext(cur *curriculum.Curriculum, module *curriculum.Module, e
 		"Environment: " + state.Profile,
 		"Active lab: " + exercise.ID + " — " + exercise.Title,
 		"Module: " + module.ID + " — " + module.Name,
+		"Learning stage: " + stage,
 		"Mode: " + string(mode),
 		"Skills: " + joinNames(cur, exercise.Skills),
 		fmt.Sprintf("Target time: %d minutes", exercise.TargetMinutes),

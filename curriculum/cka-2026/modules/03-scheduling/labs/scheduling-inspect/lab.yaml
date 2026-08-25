@@ -1,0 +1,65 @@
+schemaVersion: 1
+id: scheduling-inspect
+title: Explain a healthy scheduler decision
+learningStage: inspect
+prerequisites:
+  - scheduling-build
+domain:
+  - workloads-scheduling
+skills:
+  - scheduling
+  - node-selectors
+difficulty: 1
+targetMinutes: 5
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/namespace.yaml
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl label node worker1 dojo-tier=general --overwrite
+        kubectl label node worker2 dojo-tier=special --overwrite
+      undo: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl label node worker1 dojo-tier- >/dev/null 2>&1 || true
+        kubectl label node worker2 dojo-tier- >/dev/null 2>&1 || true
+    - type: kubernetesApply
+      manifest: manifests/pod.yaml
+
+checkpoints:
+  - id: assigned-node
+    task: |
+      Inspect Pod `report` with `kubectl get -o wide` and its YAML. Which node
+      did the scheduler choose? Submit only the node name.
+    answer:
+      accepted:
+        - worker2
+      caseInsensitive: true
+  - id: deciding-constraint
+    task: |
+      Compare the Pod's `nodeSelector` with node labels. Which complete
+      `key=value` pair excluded `worker1` and selected `worker2`?
+    answer:
+      accepted:
+        - dojo-tier=special
+      caseInsensitive: true
+
+grading:
+  all:
+    - type: podScheduled
+      namespace: dojo-scheduling-inspect
+      name: report
+      node: worker2
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-scheduling-inspect
+  - worker1.labels
+  - worker2.labels

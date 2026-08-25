@@ -192,6 +192,7 @@ Run `dojo content types` for the current list.
 | Type | Checks |
 |---|---|
 | `deploymentAvailable` | `namespace`, `name`, `minReplicas` — available replicas, not just desired |
+| `podScheduled` | `namespace`, `name`, `scheduled`, `node` — scheduler binding, independent of readiness |
 | `serviceHasEndpoints` | `namespace`, `name`, `port`, `minEndpoints` — ready EndpointSlice addresses |
 | `httpService` | `namespace`, `service`, `port`, `path`, `expectStatus` — a real request from inside the cluster |
 | `authCanI` | `user` or `serviceAccount`, `namespace`, `verb`, `resource`, `expect` — asks the API server |

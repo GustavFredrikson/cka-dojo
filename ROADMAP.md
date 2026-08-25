@@ -57,14 +57,14 @@ fault primitives, grader framework, three reference labs, `content validate`.
 
 Implemented fault primitives: `kubernetesApply`, `kubernetesPatch`,
 `kubernetesDelete`, `kubernetesScale`, `systemdStop`, `fileReplace`, `nodeExec`.
-Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `httpService`,
-`authCanI`, `nodeReady`, `nodeService`, `nodeFile`, `command`, `objectExists`,
-`jsonPath`.
+Implemented graders: `deploymentAvailable`, `podScheduled`,
+`serviceHasEndpoints`, `httpService`, `authCanI`, `nodeReady`, `nodeService`,
+`nodeFile`, `command`, `objectExists`, `jsonPath`.
 
 ### Milestone 3 - learning UX - `done`
 
 - [x] `dojo learn <module>` renders `lesson.md` with an interactive pager
-- [x] Lessons for all three current modules, with a validated common structure
+- [x] Lessons for all current modules, with a validated common structure
 - [x] `dojo progress` skill table and `--by-lab` attempt history
 - [x] `dojo recommend` = exam weight x lack of mastery x recency
 - [x] `dojo tutor-context` with an explicit metadata allow-list; tests prove it
@@ -78,16 +78,24 @@ Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `httpService`
   contextual troubleshooting
 - [x] Stage-aware recommendations that never select locked exercises
 
-### Milestone 4 - curriculum expansion - `next`
+### Milestone 4 - curriculum expansion - `in progress`
 
 Grow to 45-55 exercises, driven by gaps found while actually studying. Do **not**
 mass-generate labs; each one gets dogfooded. Target the published domain
 weighting: troubleshooting 30, cluster architecture 25, networking 20,
 workloads 15, storage 10.
 
-Next: dogfood all five Services exercises, then give Scheduling, RBAC and
-Storage the same concept → command → diagnosis ladder. Add `dojo placement`
-only after enough low-stage exercises exist to produce an honest result.
+- [x] Live-dogfood the complete Services path and every contextual variant
+- [x] Scheduling path: Follow → Build → Inspect → guided repair → contextual
+  troubleshooting, including clean restoration of node labels and taints
+- [ ] Expand RBAC into the same progression
+- [ ] Add the Storage progression (PV, PVC, StorageClass, binding, Pending)
+- [ ] Add Workloads command vocabulary before introducing CrashLoop diagnosis
+- [ ] Add `dojo placement` once enough low-stage exercises exist to produce an
+  honest per-skill result
+
+Current size: 12 dogfooded exercises across four modules. Next implementation
+slice: RBAC, then Storage.
 
 ### Milestone 5 - special environments - `later`
 
@@ -169,3 +177,10 @@ exam UI.
   recommendation factors were visible, progress reset archived history, and
   tutor context omitted the active variant and seed. The embedded-content
   binary was installed successfully as `~/.local/bin/dojo`.
+- The five-stage Services path passed live end to end. All three contextual
+  Service variants failed before repair and passed after distinct state-based
+  fixes; reset re-injected the selected fault.
+- The five-stage Scheduling path passed live end to end. Selector and taint
+  variants both produced genuine Pending Pods, accepted distinct valid fixes,
+  and reset correctly. Teardown removed every training namespace and restored
+  all worker labels and taints; all three Kubernetes nodes remained Ready.

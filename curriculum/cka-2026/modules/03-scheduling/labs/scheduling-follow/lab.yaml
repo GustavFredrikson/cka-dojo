@@ -1,0 +1,116 @@
+schemaVersion: 1
+id: scheduling-follow
+title: See a taint block and a toleration permit
+learningStage: follow
+domain:
+  - workloads-scheduling
+skills:
+  - scheduling
+  - taints
+  - tolerations
+  - node-selectors
+difficulty: 1
+targetMinutes: 8
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/namespace.yaml
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl taint node worker2 dedicated=training:NoSchedule --overwrite
+      undo: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl taint node worker2 dedicated:NoSchedule- >/dev/null 2>&1 || true
+    - type: kubernetesApply
+      manifest: manifests/pending-pod.yaml
+
+checkpoints:
+  - id: inspect-taint
+    task: |
+      Run:
+
+      ```bash
+      kubectl describe node worker2
+      kubectl -n dojo-scheduling-follow describe pod web
+      ```
+
+      Which complete `key=value:effect` taint blocks this Pod? Submit it with
+      `dojo check '<key=value:effect>'`.
+    answer:
+      accepted:
+        - dedicated=training:NoSchedule
+      caseInsensitive: true
+  - id: confirm-pending
+    task: |
+      Confirm that the scheduler has not assigned `web` to a node:
+
+      ```bash
+      kubectl -n dojo-scheduling-follow get pod web -o wide
+      kubectl -n dojo-scheduling-follow get events --sort-by=.lastTimestamp
+      ```
+
+      Read the `FailedScheduling` message, then run `dojo check`.
+    grading:
+      all:
+        - type: podScheduled
+          namespace: dojo-scheduling-follow
+          name: web
+          scheduled: false
+  - id: add-toleration
+    task: |
+      Replace the Pod with the same manifest plus the matching toleration:
+
+      ```bash
+      kubectl -n dojo-scheduling-follow delete pod web
+      kubectl apply -f - <<'EOF'
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: web
+        namespace: dojo-scheduling-follow
+      spec:
+        nodeSelector:
+          kubernetes.io/hostname: worker2
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: training
+            effect: NoSchedule
+        containers:
+          - name: web
+            image: nginx:1.27-alpine
+      EOF
+      ```
+
+      Wait for the scheduler to bind it, then run `dojo check`.
+    grading:
+      all:
+        - type: podScheduled
+          namespace: dojo-scheduling-follow
+          name: web
+          node: worker2
+
+grading:
+  all:
+    - type: podScheduled
+      namespace: dojo-scheduling-follow
+      name: web
+      node: worker2
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-scheduling-follow
+      name: web
+      path: "{.spec.tolerations[?(@.key=='dedicated')].effect}"
+      equals: NoSchedule
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-scheduling-follow
+  - worker2.taints

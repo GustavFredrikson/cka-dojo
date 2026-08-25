@@ -1,0 +1,14 @@
+id: 03-scheduling
+name: Scheduling
+summary: >-
+  How node labels, selectors, taints and tolerations constrain scheduler
+  decisions, and how to explain a Pending Pod from evidence.
+domains:
+  - workloads-scheduling
+  - troubleshooting
+labs:
+  - scheduling-follow
+  - scheduling-build
+  - scheduling-inspect
+  - scheduling-guided-toleration
+  - scheduling-pending

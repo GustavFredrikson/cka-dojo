@@ -1,0 +1,76 @@
+schemaVersion: 1
+id: scheduling-pending
+title: A required worker never receives its Pod
+learningStage: contextual-fix
+prerequisites:
+  - scheduling-guided-toleration
+domain:
+  - workloads-scheduling
+  - troubleshooting
+skills:
+  - scheduling
+  - taints
+  - tolerations
+  - node-selectors
+  - scheduler-diagnostics
+difficulty: 2
+targetMinutes: 8
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/namespace.yaml
+
+variants:
+  options:
+    - id: unmatched-selector
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl label node worker2 dojo-reserved- >/dev/null 2>&1 || true
+          undo: |
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl label node worker2 dojo-reserved- >/dev/null 2>&1 || true
+        - type: kubernetesApply
+          manifest: manifests/selector-pod.yaml
+      hints:
+        - Read the Pod's latest `FailedScheduling` event before changing it.
+        - Compare every required node label in the Pod spec with labels on `worker2`.
+        - Either make `worker2` satisfy the intended selector or replace the Pod with an equivalent selector that still requires `worker2`.
+    - id: untolerated-taint
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl taint node worker2 dedicated=reports:NoSchedule --overwrite
+          undo: |
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl taint node worker2 dedicated:NoSchedule- >/dev/null 2>&1 || true
+        - type: kubernetesApply
+          manifest: manifests/tainted-pod.yaml
+      hints:
+        - Read the Pod's latest `FailedScheduling` event before changing it.
+        - Compare `worker2` taints with the Pod's tolerations.
+        - Remove an unintended taint or replace the standalone Pod with a matching toleration while preserving its required node.
+
+grading:
+  all:
+    - type: podScheduled
+      namespace: dojo-scheduling-pending
+      name: report
+      node: worker2
+
+hints:
+  - Start with `kubectl describe pod report` and use the scheduler's event as evidence.
+
+exam:
+  eligible: true
+conflicts:
+  - namespace:dojo-scheduling-pending
+  - worker2.labels
+  - worker2.taints

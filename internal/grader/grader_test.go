@@ -100,6 +100,17 @@ unit: kubelet
 	}
 }
 
+func TestPodScheduledRejectsNodeWhenExpectingPending(t *testing.T) {
+	_, err := buildFrom(t, `type: podScheduled
+name: web
+scheduled: false
+node: worker2
+`)
+	if err == nil || !strings.Contains(err.Error(), "node cannot be required") {
+		t.Fatalf("err = %v, want incompatible expectation rejected", err)
+	}
+}
+
 func TestEveryRegisteredGraderValidatesItsInput(t *testing.T) {
 	// An empty spec must never validate: a grader that accepts nothing would
 	// silently pass a lab.

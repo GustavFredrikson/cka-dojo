@@ -1,0 +1,58 @@
+schemaVersion: 1
+id: scheduling-guided-toleration
+title: Add a known missing toleration
+learningStage: guided-fix
+prerequisites:
+  - scheduling-inspect
+domain:
+  - workloads-scheduling
+  - troubleshooting
+skills:
+  - scheduling
+  - taints
+  - tolerations
+  - node-selectors
+difficulty: 1
+targetMinutes: 6
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/namespace.yaml
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl taint node worker2 dedicated=training:NoSchedule --overwrite
+      undo: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl taint node worker2 dedicated:NoSchedule- >/dev/null 2>&1 || true
+    - type: kubernetesApply
+      manifest: manifests/pending-pod.yaml
+
+grading:
+  all:
+    - type: podScheduled
+      namespace: dojo-scheduling-guided
+      name: batch
+      node: worker2
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-scheduling-guided
+      name: batch
+      path: "{.spec.tolerations[?(@.key=='dedicated')].effect}"
+      equals: NoSchedule
+
+hints:
+  - Pod scheduling fields are immutable; plan to replace this standalone Pod.
+  - Preserve its name, image and nodeSelector, then add a matching toleration.
+  - The toleration needs key `dedicated`, value `training`, and effect `NoSchedule`.
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-scheduling-guided
+  - worker2.taints

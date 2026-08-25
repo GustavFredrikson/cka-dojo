@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: report
+  namespace: dojo-scheduling-pending
+spec:
+  nodeSelector:
+    dojo-reserved: "true"
+  containers:
+    - name: report
+      image: nginx:1.27-alpine
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi

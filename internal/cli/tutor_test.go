@@ -17,7 +17,7 @@ func TestTutorContextAllowListDoesNotLeakScenarioInternals(t *testing.T) {
 	module := &curriculum.Module{ID: "05-services", Name: "Services"}
 	exercise := &lab.Lab{
 		ID: "services-no-endpoints", Title: "A Service that does not answer",
-		Skills: []string{"services"}, TargetMinutes: 6,
+		Skills: []string{"services"}, TargetMinutes: 6, LearningStage: lab.StageContextualFix,
 	}
 	state := &config.State{
 		Profile: "standard", Mode: config.ModePractice,
@@ -29,6 +29,7 @@ func TestTutorContextAllowListDoesNotLeakScenarioInternals(t *testing.T) {
 	for _, want := range []string{
 		"Curriculum: cka-2026", "Kubernetes: 1.35",
 		"Active lab: services-no-endpoints", "Skills: Services",
+		"Learning stage: 5 — Fix, contextual",
 		"Hints used: 1", "Attempt: 2",
 	} {
 		if !strings.Contains(got, want) {

@@ -76,6 +76,9 @@ mastery gates can require two passes with the latest successful pass using no
 hints. Experienced learners can jump ahead explicitly with
 `dojo start <lab> --skip-prerequisites`.
 
+The current dogfooded curriculum contains 12 exercises: five-stage Services
+and Scheduling paths, plus independent RBAC and node troubleshooting tasks.
+
 Environment management:
 
 ```bash

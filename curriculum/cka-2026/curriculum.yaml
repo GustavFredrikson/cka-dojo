@@ -33,6 +33,16 @@ domains:
 # Progress is tracked per skill, not per lab: "26 of 50 labs done" says nothing
 # about whether you can fix a Service under time pressure.
 skills:
+  - id: scheduling
+    name: Scheduling decisions
+  - id: taints
+    name: Node taints
+  - id: tolerations
+    name: Pod tolerations
+  - id: node-selectors
+    name: Node selectors
+  - id: scheduler-diagnostics
+    name: Scheduler diagnostics
   - id: services
     name: Services
   - id: selectors
@@ -59,6 +69,7 @@ skills:
     name: systemd on cluster nodes
 
 modules:
+  - 03-scheduling
   - 04-rbac
   - 05-services
   - 15-troubleshooting

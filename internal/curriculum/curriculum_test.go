@@ -76,3 +76,36 @@ func TestModuleLookupUsesFriendlyTopicNames(t *testing.T) {
 		}
 	}
 }
+
+func TestSchedulingModuleIsAnOrderedFiveStagePath(t *testing.T) {
+	src, err := content.Resolve("../..", "")
+	if err != nil {
+		t.Fatalf("content: %v", err)
+	}
+	cur, err := Load(src, "cka-2026")
+	if err != nil {
+		t.Fatalf("curriculum: %v", err)
+	}
+	module := cur.ModuleByID("scheduling")
+	if module == nil || len(module.Labs) != 5 {
+		t.Fatalf("scheduling module = %#v, want five exercises", module)
+	}
+	for i, exercise := range module.Labs {
+		info, ok := exercise.LearningStage.Info()
+		if !ok || info.Level != i+1 {
+			t.Errorf("exercise %s stage = %+v, %v; want level %d", exercise.ID, info, ok, i+1)
+		}
+		if i > 0 && (len(exercise.Prerequisites) != 1 || exercise.Prerequisites[0] != module.Labs[i-1].ID) {
+			t.Errorf("exercise %s does not require previous stage %s", exercise.ID, module.Labs[i-1].ID)
+		}
+	}
+	contextual := module.Labs[4]
+	if contextual.Variants == nil || len(contextual.Variants.Options) != 2 {
+		t.Fatalf("contextual variants = %#v, want selector and taint", contextual.Variants)
+	}
+	for i := range contextual.Variants.Options {
+		if _, err := contextual.Build(&contextual.Variants.Options[i]); err != nil {
+			t.Errorf("build variant %s: %v", contextual.Variants.Options[i].ID, err)
+		}
+	}
+}

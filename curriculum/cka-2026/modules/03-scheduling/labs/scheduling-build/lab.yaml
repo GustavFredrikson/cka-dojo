@@ -1,0 +1,63 @@
+schemaVersion: 1
+id: scheduling-build
+title: Place a Pod using a node label
+learningStage: build
+prerequisites:
+  - scheduling-follow
+domain:
+  - workloads-scheduling
+skills:
+  - scheduling
+  - node-selectors
+difficulty: 1
+targetMinutes: 6
+
+environment:
+  profile: standard
+
+setup:
+  apply:
+    - manifests/namespace.yaml
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl label node worker1 dojo-tier=general --overwrite
+        kubectl label node worker2 dojo-tier=special --overwrite
+      undo: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl label node worker1 dojo-tier- >/dev/null 2>&1 || true
+        kubectl label node worker2 dojo-tier- >/dev/null 2>&1 || true
+
+checkpoints:
+  - id: placed
+    task: |
+      Create the requested Pod using any valid workflow. Inspect its assigned
+      node, then run `dojo check`.
+    grading:
+      all:
+        - type: podScheduled
+          namespace: dojo-scheduling-build
+          name: report
+          node: worker2
+
+grading:
+  all:
+    - type: podScheduled
+      namespace: dojo-scheduling-build
+      name: report
+      node: worker2
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-scheduling-build
+      name: report
+      path: "{.spec.nodeSelector.dojo-tier}"
+      equals: special
+
+exam:
+  eligible: false
+conflicts:
+  - namespace:dojo-scheduling-build
+  - worker1.labels
+  - worker2.labels

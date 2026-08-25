@@ -15,9 +15,73 @@ func init() {
 	register(func() Checker { return &ObjectExists{} })
 	register(func() Checker { return &JSONPath{} })
 	register(func() Checker { return &DeploymentAvailable{} })
+	register(func() Checker { return &PodScheduled{} })
 	register(func() Checker { return &ServiceHasEndpoints{} })
 	register(func() Checker { return &AuthCanI{} })
 	register(func() Checker { return &HTTPService{} })
+}
+
+// PodScheduled checks the scheduler's binding decision without conflating it
+// with container readiness. This is useful for taint, selector, affinity and
+// resource-fit exercises where Pending is the state being studied.
+type PodScheduled struct {
+	Namespace string `yaml:"namespace"`
+	Name      string `yaml:"name"`
+	// Scheduled defaults to true.
+	Scheduled *bool `yaml:"scheduled"`
+	// Node optionally requires the binding to land on one specific node.
+	Node string `yaml:"node"`
+}
+
+func (p *PodScheduled) Type() string { return "podScheduled" }
+
+func (p *PodScheduled) Validate() error {
+	if p.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if p.Node != "" && !p.wantScheduled() {
+		return fmt.Errorf("node cannot be required when scheduled is false")
+	}
+	return nil
+}
+
+func (p *PodScheduled) wantScheduled() bool {
+	return p.Scheduled == nil || *p.Scheduled
+}
+
+func (p *PodScheduled) Describe() string {
+	if !p.wantScheduled() {
+		return fmt.Sprintf("pod %s in %s remains unscheduled", p.Name, ns(p.Namespace))
+	}
+	if p.Node != "" {
+		return fmt.Sprintf("pod %s in %s is scheduled on %s", p.Name, ns(p.Namespace), p.Node)
+	}
+	return fmt.Sprintf("pod %s in %s is scheduled", p.Name, ns(p.Namespace))
+}
+
+func (p *PodScheduled) Check(ctx context.Context, env *environment.Manager) Result {
+	args := nsArgs([]string{"get", "pod", p.Name, "-o", "jsonpath={.spec.nodeName}"}, p.Namespace)
+	res, err := env.KubectlRaw(ctx, args...)
+	if err != nil {
+		return broken(p.Describe(), err)
+	}
+	if res.ExitCode != 0 {
+		return fail(p.Describe(), "the pod was not found")
+	}
+	node := strings.TrimSpace(res.Stdout)
+	if !p.wantScheduled() {
+		if node == "" {
+			return pass(p.Describe())
+		}
+		return fail(p.Describe(), "it is bound to %s", node)
+	}
+	if node == "" {
+		return fail(p.Describe(), "spec.nodeName is still empty")
+	}
+	if p.Node != "" && node != p.Node {
+		return fail(p.Describe(), "it is bound to %s", node)
+	}
+	return pass(p.Describe())
 }
 
 func ns(n string) string {
