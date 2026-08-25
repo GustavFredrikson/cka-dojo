@@ -142,8 +142,10 @@ exam UI.
   kube-system`); `dojo env reset` is the documented answer.
 - A determined learner with `sudo` on cp1 could inspect staged fault artefacts
   in the window before they are deleted. Acceptable for a self-study tool.
-- No integration CI yet; PR CI runs `go vet`, `go test`, `content validate`
-  with a fake provider only.
+- PR CI (`.github/workflows/ci.yml`) runs gofmt, `go vet`, `go test` and
+  `content validate` on Linux, against the fake provider. Nothing in CI boots a
+  VM, so provisioning regressions are only caught by running `dojo setup`
+  locally. An integration job that builds a real cluster is still unwritten.
 
 ## 7. Verification log
 

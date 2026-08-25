@@ -1,0 +1,45 @@
+# Fast checks only. Everything here runs without a hypervisor: the engine is
+# exercised through the fake provider, and content linting is offline by
+# design. Provisioning a real cluster is a separate, slower job that is not
+# wired up yet -- see ROADMAP.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      # Catches unknown fault and grader types, missing manifests, undeclared
+      # skills and labs with no hints -- the mistakes that would otherwise
+      # surface halfway through a lab on someone's machine.
+      - name: content validate
+        run: make validate
