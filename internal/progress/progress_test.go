@@ -1,6 +1,8 @@
 package progress
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -13,8 +15,8 @@ func TestMasteryNeedsTwoPassesAndNoHints(t *testing.T) {
 	}{
 		{"one clean pass is not mastery", Attempt{Passes: 1, LastPassed: true}, false},
 		{"two passes, last one clean", Attempt{Passes: 2, LastPassed: true}, true},
-		{"two passes, last one hinted", Attempt{Passes: 2, LastPassed: true, LastHints: 1}, false},
-		{"two passes, last attempt failed", Attempt{Passes: 2, LastPassed: false}, false},
+		{"two passes, last successful one hinted", Attempt{Passes: 2, LastPassHints: 1}, false},
+		{"later failed attempt does not revoke mastery", Attempt{Passes: 2, LastPassed: false}, true},
 	} {
 		if got := tc.a.Mastered(); got != tc.want {
 			t.Errorf("%s: Mastered = %v, want %v", tc.name, got, tc.want)
@@ -51,6 +53,35 @@ func TestHintedPassIsNotClean(t *testing.T) {
 	f.RecordGrade("lab-a", true, true, time.Minute, 2, false)
 	if got := f.Get("lab-a").CleanPasses; got != 0 {
 		t.Errorf("cleanPasses = %d, want 0", got)
+	}
+	if f.Get("lab-a").Mastered() {
+		t.Error("a hinted latest pass counted toward mastery")
+	}
+}
+
+func TestStartingAnotherAttemptDoesNotRevokeMastery(t *testing.T) {
+	f := &File{Version: 1, Labs: map[string]*Attempt{
+		"lab-a": {Passes: 2, LastPassHints: 0, LastPassed: true},
+	}}
+	f.StartAttempt("lab-a", 2, "", nil, nil)
+	if !f.Get("lab-a").Mastered() {
+		t.Error("starting a later attempt revoked established mastery")
+	}
+}
+
+func TestRecordGradeTracksHintsFromLatestSuccessfulAttempt(t *testing.T) {
+	f := &File{Version: 1, Labs: map[string]*Attempt{}}
+	f.StartAttempt("lab-a", 1, "", nil, nil)
+	f.RecordGrade("lab-a", true, true, time.Minute, 2, false)
+	f.StartAttempt("lab-a", 2, "", nil, nil)
+	f.RecordGrade("lab-a", true, true, time.Minute, 0, false)
+	if !f.Get("lab-a").Mastered() {
+		t.Error("a clean latest successful attempt did not establish mastery")
+	}
+	f.StartAttempt("lab-a", 3, "", nil, nil)
+	f.RecordGrade("lab-a", false, false, time.Minute, 3, false)
+	if !f.Get("lab-a").Mastered() {
+		t.Error("a later failure rewrote the latest successful attempt's hints")
 	}
 }
 
@@ -92,5 +123,43 @@ func TestRoundTripsThroughDisk(t *testing.T) {
 	}
 	if got := again.Get("lab-a").LastSeed; got != 7 {
 		t.Errorf("seed did not survive a round trip: %d", got)
+	}
+}
+
+func TestArchiveKeepsRecoverableHistoryAndStartsFresh(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("DOJO_HOME", home)
+	f := &File{Version: 1, Labs: map[string]*Attempt{}}
+	f.StartAttempt("lab-a", 7, "v2", []string{"rbac"}, nil)
+	if err := f.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	backup, err := Archive(time.Date(2026, 8, 25, 14, 3, 21, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	want := filepath.Join(home, "progress-20260825-140321.json")
+	if backup != want {
+		t.Errorf("backup = %q, want %q", backup, want)
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Fatalf("backup is not readable: %v", err)
+	}
+	fresh, err := Load()
+	if err != nil {
+		t.Fatalf("load fresh: %v", err)
+	}
+	if len(fresh.Labs) != 0 {
+		t.Errorf("fresh history contains %d labs", len(fresh.Labs))
+	}
+
+	// A second reset in the same second must not overwrite the first backup.
+	second, err := Archive(time.Date(2026, 8, 25, 14, 3, 21, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("second archive: %v", err)
+	}
+	if second == backup {
+		t.Error("second archive overwrote the first")
 	}
 }

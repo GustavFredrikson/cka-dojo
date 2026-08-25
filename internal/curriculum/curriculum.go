@@ -57,6 +57,32 @@ func (m *Module) Lesson(src *content.Source) (string, error) {
 	return string(b), nil
 }
 
+// ValidateLesson enforces the compact teaching structure shared by modules.
+// It catches a half-authored module during content validation rather than when
+// a learner first tries `dojo learn`.
+func (m *Module) ValidateLesson(src *content.Source) []error {
+	lesson, err := m.Lesson(src)
+	if err != nil {
+		return []error{err}
+	}
+	required := []string{
+		"## Mental model",
+		"## Objects involved",
+		"## Commands worth knowing",
+		"## Diagnostic workflow",
+		"## Common CKA failure modes",
+		"## 5-minute walkthrough",
+		"## Labs",
+	}
+	var errs []error
+	for _, heading := range required {
+		if !strings.Contains(lesson, heading) {
+			errs = append(errs, fmt.Errorf("module %s lesson is missing %q", m.ID, heading))
+		}
+	}
+	return errs
+}
+
 // Curriculum is one exam profile's content.
 type Curriculum struct {
 	SchemaVersion int    `yaml:"schemaVersion"`

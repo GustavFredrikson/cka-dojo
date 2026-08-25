@@ -49,9 +49,16 @@ Do not share `lab.yaml`, `solution.md`, grader definitions or fault
 definitions during an attempt. Those describe the answer and turn tutoring
 into answer retrieval.
 
-The planned `dojo tutor-context` command will print only the safe metadata in
-one pasteable block. Until it lands, `dojo status` plus `dojo task` provides
-the same information without exposing the hidden setup.
+`dojo tutor-context` prints only that safe metadata in one pasteable block:
+
+```bash
+dojo tutor-context
+```
+
+Its formatter uses an explicit allow-list and never receives the active
+scenario's fault, grader or solution. It also omits the selected variant and
+seed. Use `dojo status` and `dojo task` when you additionally want to share the
+learner-visible task text.
 
 ## A useful tutoring loop
 

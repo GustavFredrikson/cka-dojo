@@ -62,9 +62,7 @@ func newContentValidateCmd(app *App) *cobra.Command {
 			skills := cur.SkillSet()
 			labCount := 0
 			for _, m := range cur.Modules {
-				if !m.HasLesson(app.Src) {
-					ui.Warn("module %s has no lesson.md yet", m.ID)
-				}
+				report("module "+m.ID, m.ValidateLesson(app.Src))
 				for _, l := range m.Labs {
 					labCount++
 					report("lab "+l.ID, l.Validate(domains, skills, knownProfiles))

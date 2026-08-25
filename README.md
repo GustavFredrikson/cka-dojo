@@ -35,21 +35,25 @@ Note what the task does *not* say: what is broken.
 ## Getting started
 
 ```bash
-make build && ./bin/dojo doctor
+make install
+dojo doctor
 ```
+
+By default this installs the self-contained binary to `~/.local/bin/dojo`.
+Use `PREFIX=/usr/local make install` to choose a different prefix.
 
 `doctor` checks the host, the dependencies and the content before you spend
 twenty minutes provisioning a cluster that was never going to work.
 
 ```bash
-./bin/dojo setup
+dojo setup
 ```
 
 The first build downloads an OS image and installs packages; expect 15–25
 minutes. It is idempotent and resumable — interrupt it and run it again.
 
 ```bash
-./bin/dojo shell
+dojo shell
 ```
 
 That drops you onto the workstation as `student`, with `kubectl`, `helm`,
@@ -60,6 +64,8 @@ completions and a working kubeconfig. From there `ssh cp1`, `ssh worker1` and
 
 ```bash
 dojo labs                  # what is available
+dojo learn services        # concise theory and diagnostic workflow
+dojo recommend             # what your history says to practise next
 dojo start <lab>           # build the scenario, print the task
 dojo shell                 # go and fix it
 dojo grade                 # check the cluster against the requirements
@@ -67,6 +73,8 @@ dojo hint                  # a nudge, one level at a time, recorded
 dojo solution              # a worked answer
 dojo reset                 # rebuild this scenario
 dojo stop                  # end the lab and clean up
+dojo tutor-context         # safe metadata to paste into an AI tutor
+dojo progress reset        # archive development history and start fresh
 ```
 
 Environment management:

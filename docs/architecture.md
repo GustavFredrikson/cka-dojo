@@ -35,6 +35,7 @@ adding a provider never touches curriculum**.
 | `internal/lab` | Lab schema, loader, and the runner that drives an attempt |
 | `internal/curriculum` | Domains, skills, modules, lab discovery |
 | `internal/progress` | Attempt history and the mastery rule |
+| `internal/recommend` | Transparent weight × mastery-gap × recency ranking |
 | `internal/ui` | The only writer to the terminal; mirrors everything to a log |
 
 ## Why a separate workstation VM

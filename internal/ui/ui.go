@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -25,6 +26,10 @@ func isTTY(f *os.File) bool {
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
+
+// IsTerminal reports whether normal output is attached to an interactive
+// terminal. Commands use it to avoid opening pagers in scripts and tests.
+func IsTerminal() bool { return isTTY(os.Stdout) }
 
 // SetVerbose turns on step-level output.
 func SetVerbose(v bool) { verbose = v }
@@ -147,4 +152,52 @@ func Markdown(src string) {
 			emit(os.Stdout, "info", "", line)
 		}
 	}
+}
+
+// PageMarkdown renders Markdown through less when output is interactive and
+// the lesson is long enough to need it. Redirected output always remains plain
+// and deterministic, which keeps `dojo learn ... | cat` useful.
+func PageMarkdown(src string, noPager bool) error {
+	if noPager || !IsTerminal() {
+		Markdown(src)
+		return nil
+	}
+	less, err := exec.LookPath("less")
+	if err != nil {
+		Markdown(src)
+		return nil
+	}
+
+	cmd := exec.Command(less, "-R", "-F", "-X")
+	cmd.Stdin = strings.NewReader(renderMarkdown(src, os.Getenv("NO_COLOR") == ""))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// renderMarkdown is the string-producing counterpart to Markdown, used by a
+// pager. It intentionally implements only the small subset our lessons use.
+func renderMarkdown(src string, ansi bool) string {
+	var out strings.Builder
+	inCode := false
+	for _, line := range strings.Split(strings.TrimRight(src, "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(line, "```"):
+			inCode = !inCode
+			continue
+		case inCode:
+			line = "    " + line
+			if ansi {
+				line = "\033[2m" + line + "\033[0m"
+			}
+		case strings.HasPrefix(line, "#"):
+			line = strings.TrimLeft(line, "# ")
+			if ansi {
+				line = "\033[1m" + line + "\033[0m"
+			}
+		}
+		out.WriteString(line)
+		out.WriteByte('\n')
+	}
+	return out.String()
 }

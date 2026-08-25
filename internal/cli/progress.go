@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/gustavfredrikson/cka-dojo/internal/config"
 	"github.com/gustavfredrikson/cka-dojo/internal/curriculum"
 	"github.com/gustavfredrikson/cka-dojo/internal/progress"
 	"github.com/gustavfredrikson/cka-dojo/internal/ui"
@@ -71,6 +72,44 @@ it has been passed twice, the most recent time without hints.`,
 		},
 	}
 	cmd.Flags().BoolVar(&byLab, "by-lab", false, "show per-lab history instead of skills")
+	cmd.AddCommand(newProgressResetCmd())
+	return cmd
+}
+
+func newProgressResetCmd() *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "reset",
+		Short: "Archive study history and start fresh",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			state, err := config.LoadState()
+			if err != nil {
+				return err
+			}
+			if state.Active() {
+				return fmt.Errorf("lab %q is running; end it with `dojo stop` before resetting progress", state.ActiveLab)
+			}
+			if !yes && !confirm("Archive all study progress and start fresh?") {
+				ui.Info("nothing changed")
+				return nil
+			}
+			lock, err := config.Acquire()
+			if err != nil {
+				return err
+			}
+			defer lock.Release()
+			backup, err := progress.Archive(time.Now())
+			if err != nil {
+				return err
+			}
+			ui.OK("progress reset")
+			if backup != "" {
+				ui.Info("Previous history was archived at %s", backup)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
 }
 

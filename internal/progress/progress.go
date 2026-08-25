@@ -5,6 +5,7 @@ package progress
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,16 +19,20 @@ type Attempt struct {
 	Attempts int `json:"attempts"`
 	Passes   int `json:"passes"`
 	// CleanPasses are passes that used no hints and read no solution.
-	CleanPasses int       `json:"cleanPasses"`
-	BestSeconds int       `json:"bestSeconds,omitempty"`
-	LastSeconds int       `json:"lastSeconds,omitempty"`
-	LastHints   int       `json:"lastHints"`
-	LastSeed    int64     `json:"lastSeed,omitempty"`
-	LastVariant string    `json:"lastVariant,omitempty"`
-	LastPassed  bool      `json:"lastPassed"`
-	LastAt      time.Time `json:"lastAt"`
-	Skills      []string  `json:"skills,omitempty"`
-	Domains     []string  `json:"domains,omitempty"`
+	CleanPasses int `json:"cleanPasses"`
+	BestSeconds int `json:"bestSeconds,omitempty"`
+	LastSeconds int `json:"lastSeconds,omitempty"`
+	LastHints   int `json:"lastHints"`
+	// LastPassHints belongs to the most recent successful attempt. It is
+	// deliberately separate from LastHints: beginning or failing a later
+	// attempt must not rewrite the evidence that established mastery.
+	LastPassHints int       `json:"lastPassHints,omitempty"`
+	LastSeed      int64     `json:"lastSeed,omitempty"`
+	LastVariant   string    `json:"lastVariant,omitempty"`
+	LastPassed    bool      `json:"lastPassed"`
+	LastAt        time.Time `json:"lastAt"`
+	Skills        []string  `json:"skills,omitempty"`
+	Domains       []string  `json:"domains,omitempty"`
 }
 
 // Mastered is the readiness rule: passed at least twice, and the most recent
@@ -36,7 +41,7 @@ type Attempt struct {
 // It deliberately ignores speed. Time pressure matters on the exam, but a
 // learner who is fast and hint-dependent is not ready.
 func (a *Attempt) Mastered() bool {
-	return a.Passes >= 2 && a.LastPassed && a.LastHints == 0
+	return a.Passes >= 2 && a.LastPassHints == 0
 }
 
 // File is the whole progress record.
@@ -93,6 +98,54 @@ func (f *File) Save() error {
 	return os.Rename(tmp, p)
 }
 
+// Archive moves the current progress file to a timestamped backup and writes
+// a fresh empty record. It is the recoverable implementation behind
+// `dojo progress reset`; study history is never deleted outright.
+func Archive(now time.Time) (string, error) {
+	p, err := path()
+	if err != nil {
+		return "", err
+	}
+	backup := ""
+	if _, err := os.Stat(p); err == nil {
+		base := filepath.Join(filepath.Dir(p), "progress-"+now.UTC().Format("20060102-150405")+".json")
+		backup, err = availableBackupPath(base)
+		if err != nil {
+			return "", err
+		}
+		if err := os.Rename(p, backup); err != nil {
+			return "", err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	fresh := &File{Version: 1, Labs: map[string]*Attempt{}}
+	if err := fresh.Save(); err != nil {
+		// Best effort: put the original back if creating the new record failed.
+		if backup != "" {
+			_ = os.Rename(backup, p)
+		}
+		return "", err
+	}
+	return backup, nil
+}
+
+func availableBackupPath(base string) (string, error) {
+	if _, err := os.Stat(base); errors.Is(err, os.ErrNotExist) {
+		return base, nil
+	} else if err != nil {
+		return "", err
+	}
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s.%d", base, i)
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+}
+
 // Get returns a lab's record, creating it if needed.
 func (f *File) Get(labID string) *Attempt {
 	if a, ok := f.Labs[labID]; ok {
@@ -133,6 +186,7 @@ func (f *File) RecordGrade(labID string, passed, firstPass bool, elapsed time.Du
 	}
 	if passed && firstPass {
 		a.Passes++
+		a.LastPassHints = hints
 		if !solutionRead && hints == 0 {
 			a.CleanPasses++
 		}

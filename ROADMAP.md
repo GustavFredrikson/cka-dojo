@@ -61,24 +61,25 @@ Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `httpService`
 `authCanI`, `nodeReady`, `nodeService`, `nodeFile`, `command`, `objectExists`,
 `jsonPath`.
 
-### Milestone 3 - learning UX - `next`
+### Milestone 3 - learning UX - `done`
 
-- [ ] `dojo learn <module>` renders `lesson.md` with a pager
-- [ ] Write lessons for the modules backing the six reference labs
+- [x] `dojo learn <module>` renders `lesson.md` with an interactive pager
+- [x] Lessons for all three current modules, with a validated common structure
 - [x] `dojo progress` skill table and `--by-lab` attempt history
-- [ ] `dojo recommend` = exam weight x lack of mastery x recency
-- [ ] `dojo tutor-context` (must never leak fault or grader detail)
-- [ ] Mastery rule: >=2 passes AND latest pass used 0 hints
+- [x] `dojo recommend` = exam weight x lack of mastery x recency
+- [x] `dojo tutor-context` with an explicit metadata allow-list; tests prove it
+  excludes variant and seed, and it never receives faults, graders or solutions
+- [x] Mastery rule: >=2 passes AND latest pass used 0 hints
+- [x] Recoverable `dojo progress reset` and a normal `make install`
 
-### Milestone 4 - curriculum expansion - `later`
+### Milestone 4 - curriculum expansion - `next`
 
 Grow to 45-55 labs, driven by gaps found while actually studying. Do **not**
 mass-generate labs; each one gets dogfooded. Target the published domain
 weighting: troubleshooting 30, cluster architecture 25, networking 20,
 workloads 15, storage 10.
 
-Next three labs to write once Milestone 3 lands: `crashloop`, `pvc-pending`,
-`scheduling-taint`.
+Next three labs to write: `crashloop`, `pvc-pending`, `scheduling-taint`.
 
 ### Milestone 5 - special environments - `later`
 
@@ -154,3 +155,7 @@ exam UI.
 - Live testing found and fixed four engine defects: first-run Lima SSH-key
   creation races, EndpointSlice null handling, misplaced probe namespace flags,
   and stdin-consuming guest commands truncating streamed scripts.
+- Milestone 3 smoke testing used an isolated `DOJO_HOME`: all lessons rendered,
+  recommendation factors were visible, progress reset archived history, and
+  tutor context omitted the active variant and seed. The embedded-content
+  binary was installed successfully as `~/.local/bin/dojo`.

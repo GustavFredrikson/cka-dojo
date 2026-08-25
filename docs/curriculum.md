@@ -104,6 +104,29 @@ replay a scenario exactly:
 dojo start services-no-endpoints --seed 9182731
 ```
 
+Development attempts or a deliberate fresh start can be cleared without
+destroying history:
+
+```bash
+dojo progress reset
+```
+
+The old `progress.json` is moved to a timestamped file in `~/.cka-dojo`; it is
+never deleted outright.
+
+## Recommendations
+
+`dojo recommend` ranks labs with one transparent formula:
+
+```text
+score = average published domain weight × mastery gap × recency
+```
+
+An attempted-but-unpassed lab has the largest mastery gap. A new lab comes
+next, followed by a passed but unmastered lab. Mastered labs remain low-weight
+spaced-review candidates. Recency rises linearly for fourteen days after the
+last attempt. `dojo recommend --all` prints every factor used in the ranking.
+
 ## Expanding the curriculum
 
 Add content because study exposed a gap, then run and reset every variant by

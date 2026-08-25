@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/gustavfredrikson/cka-dojo/internal/config"
 	"github.com/gustavfredrikson/cka-dojo/internal/progress"
 )
 
@@ -28,5 +30,18 @@ func TestSeedOf(t *testing.T) {
 	}
 	if got := seedOf(&progress.Attempt{LastSeed: 9182731}); got != "9182731" {
 		t.Errorf("seed = %q, want 9182731", got)
+	}
+}
+
+func TestProgressResetRefusesAnActiveLab(t *testing.T) {
+	t.Setenv("DOJO_HOME", t.TempDir())
+	if err := config.SaveState(&config.State{ActiveLab: "services-no-endpoints"}); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	cmd := newProgressResetCmd()
+	cmd.SetArgs([]string{"--yes"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "dojo stop") {
+		t.Fatalf("err = %v, want an active-lab refusal", err)
 	}
 }

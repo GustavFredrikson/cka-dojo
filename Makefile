@@ -1,5 +1,6 @@
 BINARY := bin/dojo
 PKG    := ./...
+PREFIX ?= $(HOME)/.local
 
 .PHONY: all build install test vet validate clean fmt
 
@@ -9,8 +10,10 @@ build:
 	@mkdir -p bin
 	go build -o $(BINARY) ./cmd/dojo
 
-install:
-	go install ./cmd/dojo
+install: build
+	@mkdir -p $(DESTDIR)$(PREFIX)/bin
+	install -m 0755 $(BINARY) $(DESTDIR)$(PREFIX)/bin/dojo
+	@echo "installed $(DESTDIR)$(PREFIX)/bin/dojo"
 
 test:
 	go test $(PKG)
