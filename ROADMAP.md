@@ -1,0 +1,134 @@
+# cka-dojo roadmap
+
+Living document. **Update it in the same commit as the work it describes.** Any
+agent or human picking this repo up should be able to read this file alone and
+know what exists, what is next, and which decisions are already settled.
+
+- Status legend: `done` / `in progress` / `next` / `later`
+- Last reviewed: 2026-08-25
+
+---
+
+## 1. What this is
+
+A self-hosted, disposable CKA training platform. A Go CLI (`dojo`) provisions
+real kubeadm Kubernetes clusters in Lima VMs, injects faults, and grades the
+learner on **resulting cluster state** rather than on typed commands.
+
+Four layers, engine strictly separated from content:
+
+```
+CKA curriculum (YAML + Markdown)   <- content, versioned per exam revision
+Dojo engine (Go)                   <- lab runner, faults, graders, progress
+Environment provider (Lima)        <- VM lifecycle, exec, copy
+Linux VMs                          <- terminal | control plane | workers
+```
+
+## 2. Pinned versions
+
+These are deliberate pins, not "latest". The exam tracks a Kubernetes minor
+that lags upstream, so **never** follow upstream automatically.
+
+| Thing | Pin | Where |
+|---|---|---|
+| Exam profile | CKA, curriculum revision 2025-02-18 | `curriculum/cka-2026/curriculum.yaml` |
+| Kubernetes | `1.35.8` (latest patch of exam minor 1.35) | `environments/*/environment.yaml` |
+| Calico | `v3.32.1` (3.32 line is tested against k8s 1.34-1.36) | `environments/*/environment.yaml` |
+| metrics-server | `v0.9.0` | `environments/standard/environment.yaml` |
+| Guest OS | Ubuntu 24.04 LTS (Lima `_images/ubuntu-24.04`) | `internal/provider/lima` |
+| Lima network | `user-v2`, `192.168.104.0/24` | `environments/*/environment.yaml` |
+
+Bumping the exam to a new minor should touch **only** those YAML files.
+
+## 3. Milestones
+
+### Milestone 1 - foundation - `done`
+
+Go CLI, config/state, provider interface, Lima provider, `doctor`, environment
+profiles, `standard` provisioning, `setup`, `shell`, `env` subcommands.
+
+Success criterion: `dojo setup && dojo shell` lands you in a working kubeadm
+cluster.
+
+### Milestone 2 - lab engine - `done`
+
+Lab schema + loader, `start` / `task` / `reset` / `grade` / `hint` / `solution`,
+fault primitives, grader framework, three reference labs, `content validate`.
+
+Implemented fault primitives: `kubernetesApply`, `kubernetesPatch`,
+`kubernetesDelete`, `systemdStop`.
+Implemented graders: `deploymentAvailable`, `serviceHasEndpoints`, `authCanI`,
+`nodeService`, `command`, `objectExists`, `jsonPath`.
+
+### Milestone 3 - learning UX - `next`
+
+- [ ] `dojo learn <module>` renders `lesson.md` with a pager
+- [ ] Write lessons for the modules backing the six reference labs
+- [ ] `dojo progress` skill table (schema already recorded by the engine)
+- [ ] `dojo recommend` = exam weight x lack of mastery x recency
+- [ ] `dojo tutor-context` (must never leak fault or grader detail)
+- [ ] Mastery rule: >=2 passes AND latest pass used 0 hints
+
+### Milestone 4 - curriculum expansion - `later`
+
+Grow to 45-55 labs, driven by gaps found while actually studying. Do **not**
+mass-generate labs; each one gets dogfooded. Target the published domain
+weighting: troubleshooting 30, cluster architecture 25, networking 20,
+workloads 15, storage 10.
+
+Next three labs to write once Milestone 3 lands: `crashloop`, `pvc-pending`,
+`scheduling-taint`.
+
+### Milestone 5 - special environments - `later`
+
+- [ ] `raw` profile (bare Linux nodes: containerd, kubeadm init/join, CNI labs)
+- [ ] `upgrade-1.34` profile (1.34.x -> 1.35.x kubeadm upgrade drill)
+- [ ] Profile switching keeps stopped VMs on disk (`dojo env list/prune`)
+
+### Milestone 6 - exam mode - `later`
+
+Weighted task selection, `conflicts:` detection between labs, wall-clock
+120-minute timer persisted to disk (never tied to a running process), hidden
+grading until `dojo exam finish`, scoring report.
+
+### Milestone 7 - HA - `later`
+
+`ha` profile: cp1/cp2/cp3 + worker + an API endpoint, covering the
+"highly-available control plane" competency.
+
+## 4. Deliberate non-goals (v1)
+
+Browser UI, SaaS/hosted mode, user accounts, cloud clusters, third-party lab
+plugins, MCP/AI integration, gamification, non-macOS hosts, replicating the PSI
+exam UI.
+
+## 5. Settled design decisions
+
+1. **Go, not shell.** Shell only runs *inside* guests (provisioning, faults).
+2. **Separate `terminal` VM.** The learner never shells in from a cluster node,
+   so "the control plane is broken" labs stay realistic.
+3. **We own kubeadm**, rather than using Lima's finished `k8s` template - labs
+   need to break the installation itself.
+4. **Grade state, not commands.** Any route to the correct state passes.
+5. **Content never enters the guest.** Only rendered task text does; manifests
+   are staged to cp1, applied, then deleted. Solutions/graders stay on the host.
+6. **Explicit `--node-ip` everywhere.** Lima's default route NIC is
+   192.168.5.15 on *every* VM; without an explicit node IP on the `user-v2`
+   address, kubelet registers all nodes with the same IP.
+7. **No VM snapshots.** Soft reset (re-apply baseline + re-inject fault) for the
+   normal case, `dojo env reset` as the guaranteed escape hatch.
+8. **Provider is node-granular** (`EnsureNode`, `Exec`, `CopyTo`, ...) and
+   `internal/environment` composes it into environment-level operations. Adding
+   a second provider must not touch curriculum code.
+9. **Content is embedded but overridable** via `DOJO_CONTENT` / `--content`, so
+   a colleague needs one binary while we develop against the repo.
+
+## 6. Known gaps / risks
+
+- Only macOS/arm64 + Lima is exercised. Nothing else is claimed to work.
+- Soft reset cannot undo arbitrary learner damage (e.g. `kubectl delete ns
+  kube-system`); `dojo env reset` is the documented answer.
+- A determined learner with `sudo` on cp1 could inspect staged fault artefacts
+  in the window before they are deleted. Acceptable for a self-study tool.
+- No integration CI yet; PR CI runs `go vet`, `go test`, `content validate`
+  with a fake provider only.
