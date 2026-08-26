@@ -1,0 +1,39 @@
+schemaVersion: 1
+id: controlplane-scheduler
+title: Restore scheduling on the control plane
+learningStage: diagnose
+domain: [cluster-architecture, troubleshooting]
+skills: [control-plane-components, static-pods, scheduler-diagnostics]
+difficulty: 3
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        mv /etc/kubernetes/manifests/kube-scheduler.yaml /etc/kubernetes/kube-scheduler.yaml.dojo-disabled
+        for i in $(seq 1 30); do
+          [ -z "$(crictl ps -q --name kube-scheduler)" ] && break
+          sleep 1
+        done
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl -n dojo-controlplane-scheduler run pending --image=busybox:1.36 --restart=Never -- sleep 3600
+      undo: |
+        if [ -f /etc/kubernetes/kube-scheduler.yaml.dojo-disabled ]; then
+          mv /etc/kubernetes/kube-scheduler.yaml.dojo-disabled /etc/kubernetes/manifests/kube-scheduler.yaml
+        fi
+grading:
+  all:
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/manifests/kube-scheduler.yaml}
+    - {type: podScheduled, namespace: dojo-controlplane-scheduler, name: pending, scheduled: true}
+    - type: command
+      description: kube-scheduler is healthy on cp1
+      command: kubectl -n kube-system wait --for=condition=Ready pod -l component=kube-scheduler --timeout=30s
+hints:
+  - The API works, but a newly created Pod has no scheduling decision.
+  - Inspect control-plane component Pods and the files kubelet watches on cp1.
+  - Restore the scheduler manifest to `/etc/kubernetes/manifests/kube-scheduler.yaml`.
+exam: {eligible: true}
+conflicts: [cp1.manifest:kube-scheduler, cluster.scheduler]

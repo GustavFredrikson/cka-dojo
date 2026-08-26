@@ -12,3 +12,5 @@ labs:
   - services-inspect
   - services-guided-selector-fix
   - services-no-endpoints
+  - services-nodeport
+  - services-target-port

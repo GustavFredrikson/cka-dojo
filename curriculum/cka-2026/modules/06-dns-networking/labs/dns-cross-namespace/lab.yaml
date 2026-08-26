@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: dns-cross-namespace
+title: Repair cross-namespace service discovery
+learningStage: contextual-fix
+domain: [services-networking, troubleshooting]
+skills: [dns, coredns, application-troubleshooting]
+difficulty: 2
+targetMinutes: 6
+environment: {profile: standard}
+setup: {apply: [manifests/broken.yaml]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-dns-frontend, name: frontend, minReplicas: 1}
+    - type: command
+      description: frontend reaches the backend through its cross-namespace DNS name
+      command: kubectl -n dojo-dns-frontend exec deployment/frontend -- wget -qO- -T 3 http://api.dojo-dns-backend.svc.cluster.local/ >/dev/null
+hints:
+  - A short Service name is resolved in the caller's namespace.
+  - The API Service exists in `dojo-dns-backend`, not the frontend namespace.
+  - Use `service.namespace.svc.cluster.local` in the frontend command.
+exam: {eligible: true}
+conflicts: [namespace:dojo-dns-frontend, namespace:dojo-dns-backend]

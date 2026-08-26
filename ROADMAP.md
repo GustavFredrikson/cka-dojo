@@ -96,12 +96,14 @@ workloads 15, storage 10.
 - [x] Add the Storage progression (PV, PVC, StorageClass, binding, Pending)
 - [x] Add NetworkPolicy from default deny through contextual source, port and
   destination failures
+- [x] Add an exam-realistic operations batch: HPA, probes, NodePort, DNS,
+  static Pods, scheduler recovery, node drain, logs, Helm, Kustomize and CRDs
 - [ ] Add `dojo placement` once enough low-stage exercises exist to produce an
   honest per-skill result
 
-Current size: 33 dogfooded exercises across seven modules. Next curriculum
-slice: DNS/CoreDNS and Ingress/Gateway, followed by cluster lifecycle work that
-uses the special environments in milestone 5.
+Current size: 48 dogfooded exercises across ten modules. Next curriculum slice:
+Ingress/Gateway and dynamic provisioning, followed by cluster lifecycle work
+that uses the special environments in milestone 5.
 
 ### Milestone 5 - special environments - `later`
 

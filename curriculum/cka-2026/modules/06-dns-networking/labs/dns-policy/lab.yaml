@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: dns-policy
+title: One workload bypasses cluster DNS
+learningStage: contextual-fix
+domain: [services-networking, troubleshooting]
+skills: [dns, coredns, application-troubleshooting]
+difficulty: 2
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+  waitReady: [{namespace: dojo-dns-policy, kind: deployment, name: dnscheck}]
+grading:
+  all:
+    - {type: jsonPath, kind: deployment, namespace: dojo-dns-policy, name: dnscheck, path: "{.spec.template.spec.dnsPolicy}", equals: ClusterFirst}
+    - type: command
+      description: dnscheck resolves the Kubernetes API Service through cluster DNS
+      command: kubectl -n dojo-dns-policy exec deployment/dnscheck -- nslookup kubernetes.default.svc.cluster.local >/dev/null
+hints:
+  - Compare this Pod's `/etc/resolv.conf` with a normal cluster Pod.
+  - The cluster itself is healthy; inspect the Pod spec's DNS policy.
+  - "Change the Deployment to `dnsPolicy: ClusterFirst` and let it roll out."
+exam: {eligible: true}
+conflicts: [namespace:dojo-dns-policy]

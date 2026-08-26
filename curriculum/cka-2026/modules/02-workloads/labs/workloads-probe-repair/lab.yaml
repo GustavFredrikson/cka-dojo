@@ -1,0 +1,21 @@
+schemaVersion: 1
+id: workloads-probe-repair
+title: A rollout never becomes Ready
+learningStage: contextual-fix
+domain: [workloads-scheduling, troubleshooting]
+skills: [deployments, health-probes, application-troubleshooting]
+difficulty: 2
+targetMinutes: 6
+environment: {profile: standard}
+setup: {apply: [manifests/broken.yaml]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-probe, name: web, minReplicas: 2}
+    - {type: httpService, namespace: dojo-workloads-probe, service: web, port: 80}
+    - {type: jsonPath, kind: deployment, namespace: dojo-workloads-probe, name: web, path: "{.spec.template.spec.containers[0].readinessProbe.httpGet.port}", equals: "80"}
+hints:
+  - Running and Ready are different states; inspect Pod conditions and events.
+  - Compare the container's listening port with the readiness check.
+  - Edit the Deployment's readiness probe and watch the rollout.
+exam: {eligible: true}
+conflicts: [namespace:dojo-workloads-probe]

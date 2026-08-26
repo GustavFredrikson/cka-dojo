@@ -1,0 +1,25 @@
+schemaVersion: 1
+id: workloads-hpa
+title: Configure CPU autoscaling for an existing application
+learningStage: build
+domain: [workloads-scheduling]
+skills: [deployments, autoscaling, resource-management]
+difficulty: 2
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady: [{namespace: dojo-workloads-hpa, kind: deployment, name: web}]
+grading:
+  all:
+    - {type: jsonPath, kind: hpa, namespace: dojo-workloads-hpa, name: web, path: "{.spec.minReplicas}", equals: "2"}
+    - {type: jsonPath, kind: hpa, namespace: dojo-workloads-hpa, name: web, path: "{.spec.maxReplicas}", equals: "6"}
+    - type: command
+      description: autoscaling targets 60 percent average CPU utilization
+      command: test "$(kubectl -n dojo-workloads-hpa get hpa web -o jsonpath='{.spec.metrics[0].resource.target.averageUtilization}')" = 60
+hints:
+  - Use the autoscale subcommand against the existing Deployment.
+  - CPU percentage autoscaling depends on CPU requests, which are already present.
+  - Try `kubectl autoscale deployment web --help`.
+exam: {eligible: true}
+conflicts: [namespace:dojo-workloads-hpa]

@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: troubleshooting-logs
+title: Diagnose a failing container from its output
+learningStage: diagnose
+domain: [troubleshooting]
+skills: [pod-logs, resource-observability, application-troubleshooting]
+difficulty: 2
+targetMinutes: 6
+environment: {profile: standard}
+setup: {apply: [manifests/broken.yaml]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-troubleshooting-logs, name: collector, minReplicas: 1}
+    - type: command
+      description: the repaired reporter emits healthy output
+      command: kubectl -n dojo-troubleshooting-logs logs deployment/collector -c reporter | grep -q healthy
+hints:
+  - Inspect each container state before changing the Deployment.
+  - Read the failed container's current and previous output.
+  - Replace the reporter command with a long-running loop such as `while true; do echo healthy; sleep 10; done`.
+exam: {eligible: true}
+conflicts: [namespace:dojo-troubleshooting-logs]

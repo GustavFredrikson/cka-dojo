@@ -8,3 +8,4 @@ domains:
   - cluster-architecture
 labs:
   - node-not-ready
+  - troubleshooting-logs

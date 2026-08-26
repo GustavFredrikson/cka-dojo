@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: crd-resource
+title: Extend the API with a namespaced custom resource
+learningStage: exam
+domain: [cluster-architecture]
+skills: [custom-resources]
+difficulty: 3
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl delete crd backups.dojo.cka --ignore-not-found
+      undo: export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl delete crd backups.dojo.cka --ignore-not-found
+grading:
+  all:
+    - {type: objectExists, kind: customresourcedefinition, name: backups.dojo.cka}
+    - {type: objectExists, kind: backup.dojo.cka, namespace: dojo-crd-exam, name: nightly}
+    - {type: jsonPath, kind: backup.dojo.cka, namespace: dojo-crd-exam, name: nightly, path: "{.spec.schedule}", equals: '0 2 * * *'}
+    - type: command
+      description: the Backup CRD is namespaced and established
+      command: test "$(kubectl get crd backups.dojo.cka -o jsonpath='{.spec.scope}')" = Namespaced && test "$(kubectl get crd backups.dojo.cka -o jsonpath='{.status.conditions[?(@.type=="Established")].status}')" = True
+hints:
+  - Define an `apiextensions.k8s.io/v1` CustomResourceDefinition first.
+  - The CRD name is plural plus group; its schema must include `spec.schedule` as a string.
+  - Wait for the CRD to become Established before creating the custom resource.
+exam: {eligible: true}
+conflicts: [crd:backups.dojo.cka, namespace:dojo-crd-exam]

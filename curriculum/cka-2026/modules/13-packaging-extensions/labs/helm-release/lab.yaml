@@ -1,0 +1,77 @@
+schemaVersion: 1
+id: helm-release
+title: Install a provided Helm chart with required values
+learningStage: exam
+domain: [cluster-architecture]
+skills: [helm, deployments, services]
+difficulty: 2
+targetMinutes: 7
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+  faults:
+    - type: nodeExec
+      node: terminal
+      script: |
+        rm -rf /home/student/cka-assets/helm
+        mkdir -p /home/student/cka-assets/helm/templates
+        cat > /home/student/cka-assets/helm/Chart.yaml <<'EOF'
+        apiVersion: v2
+        name: dojo-web
+        version: 0.1.0
+        EOF
+        cat > /home/student/cka-assets/helm/values.yaml <<'EOF'
+        replicaCount: 1
+        image: nginx:1.27-alpine
+        service:
+          port: 80
+        EOF
+        cat > /home/student/cka-assets/helm/templates/deployment.yaml <<'EOF'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: {{ .Release.Name }}-web
+        spec:
+          replicas: {{ .Values.replicaCount }}
+          selector:
+            matchLabels:
+              app: {{ .Release.Name }}-web
+          template:
+            metadata:
+              labels:
+                app: {{ .Release.Name }}-web
+            spec:
+              containers:
+                - name: web
+                  image: {{ .Values.image }}
+                  ports:
+                    - containerPort: 80
+        EOF
+        cat > /home/student/cka-assets/helm/templates/service.yaml <<'EOF'
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: {{ .Release.Name }}-web
+        spec:
+          selector:
+            app: {{ .Release.Name }}-web
+          ports:
+            - port: {{ .Values.service.port }}
+              targetPort: 80
+        EOF
+        chown -R student:student /home/student/cka-assets
+      undo: rm -rf /home/student/cka-assets/helm
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-helm-exam, name: shop-web, minReplicas: 3}
+    - {type: serviceHasEndpoints, namespace: dojo-helm-exam, name: shop-web, port: 8080, minEndpoints: 3}
+    - type: command
+      target: terminal
+      description: Helm records release shop in dojo-helm-exam
+      command: export KUBECONFIG=/home/student/.kube/config; helm status shop -n dojo-helm-exam >/dev/null
+hints:
+  - Render the chart with the intended values before installing it.
+  - Override `replicaCount` and `service.port` without editing the chart.
+  - Use `helm install shop CHART -n dojo-helm-exam --set ...`.
+exam: {eligible: true}
+conflicts: [namespace:dojo-helm-exam, terminal:path:helm]

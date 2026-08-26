@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: node-drain
+title: Prepare a worker for maintenance
+learningStage: exam
+domain: [cluster-architecture, workloads-scheduling]
+skills: [node-maintenance, scheduling]
+difficulty: 2
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady: [{namespace: dojo-node-drain, kind: deployment, name: web}]
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl uncordon worker1 >/dev/null
+      undo: export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl uncordon worker1 >/dev/null || true
+grading:
+  all:
+    - {type: nodeReady, node: worker1, ready: true, schedulable: false}
+    - {type: deploymentAvailable, namespace: dojo-node-drain, name: web, minReplicas: 6}
+    - type: command
+      description: no application Pods remain on worker1
+      command: test -z "$(kubectl -n dojo-node-drain get pods -l app=drain-web --field-selector spec.nodeName=worker1 -o name)"
+hints:
+  - Maintenance starts by preventing new scheduling, then evicting eligible Pods.
+  - DaemonSets remain; this task grades only the application workload.
+  - Use `kubectl drain worker1 --ignore-daemonsets --delete-emptydir-data`.
+exam: {eligible: true}
+conflicts: [node:worker1, namespace:dojo-node-drain]

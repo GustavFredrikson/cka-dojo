@@ -110,7 +110,7 @@ func TestSchedulingModuleIsAnOrderedFiveStagePath(t *testing.T) {
 	}
 }
 
-func TestExpandedCurriculumHasThirtyThreeBuildableExercises(t *testing.T) {
+func TestExpandedCurriculumHasFortyEightBuildableExercises(t *testing.T) {
 	src, err := content.Resolve("../..", "")
 	if err != nil {
 		t.Fatalf("content: %v", err)
@@ -121,13 +121,16 @@ func TestExpandedCurriculumHasThirtyThreeBuildableExercises(t *testing.T) {
 	}
 
 	wantByModule := map[string]int{
-		"workloads":       7,
-		"scheduling":      5,
-		"rbac":            5,
-		"services":        5,
-		"network-policy":  5,
-		"storage":         5,
-		"troubleshooting": 1,
+		"workloads":            10,
+		"scheduling":           5,
+		"rbac":                 5,
+		"services":             7,
+		"dns-networking":       3,
+		"network-policy":       5,
+		"storage":              5,
+		"control-plane":        3,
+		"packaging-extensions": 3,
+		"troubleshooting":      2,
 	}
 	total := 0
 	for topic, want := range wantByModule {
@@ -152,7 +155,7 @@ func TestExpandedCurriculumHasThirtyThreeBuildableExercises(t *testing.T) {
 			}
 		}
 	}
-	if total != 33 {
-		t.Errorf("curriculum has %d exercises, want 33", total)
+	if total != 48 {
+		t.Errorf("curriculum has %d exercises, want 48", total)
 	}
 }

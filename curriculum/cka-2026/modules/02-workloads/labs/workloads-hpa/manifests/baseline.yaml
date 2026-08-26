@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-workloads-hpa}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: dojo-workloads-hpa}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          resources:
+            requests: {cpu: 100m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}

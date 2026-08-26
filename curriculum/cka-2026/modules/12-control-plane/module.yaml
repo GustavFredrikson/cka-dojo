@@ -1,0 +1,10 @@
+id: 12-control-plane
+name: Control plane and maintenance
+summary: >-
+  Static Pods, control-plane component recovery and safe worker maintenance on
+  a real kubeadm cluster.
+domains: [cluster-architecture, troubleshooting]
+labs:
+  - controlplane-static-pod
+  - controlplane-scheduler
+  - node-drain

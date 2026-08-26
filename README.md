@@ -77,10 +77,11 @@ mastery gates can require two passes with the latest successful pass using no
 hints. Experienced learners can jump ahead explicitly with
 `dojo start <lab> --skip-prerequisites`.
 
-The current dogfooded curriculum contains 33 exercises across Workloads,
-Scheduling, RBAC, Services, NetworkPolicy, Storage and node troubleshooting.
-Most topics progress from following a known workflow through independent
-building and inspection to guided repair and contextual troubleshooting.
+The current dogfooded curriculum contains 48 exercises across Workloads,
+Scheduling, RBAC, Services, DNS, NetworkPolicy, Storage, control-plane
+administration, Helm/Kustomize/CRDs and mixed troubleshooting. Most topics
+progress from following a known workflow through independent building and
+inspection to guided repair, contextual troubleshooting and exam-style tasks.
 
 Environment management:
 

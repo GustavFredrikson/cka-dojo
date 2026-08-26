@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-node-drain}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: dojo-node-drain}
+spec:
+  replicas: 6
+  selector: {matchLabels: {app: drain-web}}
+  template:
+    metadata: {labels: {app: drain-web}}
+    spec:
+      containers: [{name: web, image: nginx:1.27-alpine}]

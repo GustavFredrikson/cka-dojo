@@ -1,0 +1,26 @@
+schemaVersion: 1
+id: dns-service-discovery
+title: Provide stable DNS discovery for an application
+learningStage: build
+domain: [services-networking]
+skills: [dns, coredns, services, endpointslices]
+difficulty: 2
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-dns-service, kind: deployment, name: api}
+    - {namespace: dojo-dns-service, kind: deployment, name: client}
+grading:
+  all:
+    - {type: serviceHasEndpoints, namespace: dojo-dns-service, name: api, port: 8080, minEndpoints: 2}
+    - type: command
+      description: client resolves api and receives HTTP through port 8080
+      command: kubectl -n dojo-dns-service exec deployment/client -- wget -qO- -T 3 http://api:8080/ >/dev/null
+hints:
+  - DNS records for ordinary Services appear after the Service exists.
+  - Select the existing `app=api` Pods and map Service port 8080 to target port 80.
+  - Use `kubectl expose deployment api --port=8080 --target-port=80`.
+exam: {eligible: true}
+conflicts: [namespace:dojo-dns-service]

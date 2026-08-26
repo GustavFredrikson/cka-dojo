@@ -1,0 +1,66 @@
+schemaVersion: 1
+id: kustomize-release
+title: Correct and apply a provided Kustomize overlay
+learningStage: exam
+domain: [cluster-architecture]
+skills: [kustomize, deployments]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+  faults:
+    - type: nodeExec
+      node: terminal
+      script: |
+        rm -rf /home/student/cka-assets/kustomize
+        mkdir -p /home/student/cka-assets/kustomize/base /home/student/cka-assets/kustomize/overlays/prod
+        cat > /home/student/cka-assets/kustomize/base/deployment.yaml <<'EOF'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: web
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: web
+          template:
+            metadata:
+              labels:
+                app: web
+            spec:
+              containers:
+                - name: web
+                  image: nginx:1.27-alpine
+        EOF
+        cat > /home/student/cka-assets/kustomize/base/kustomization.yaml <<'EOF'
+        resources:
+          - deployment.yaml
+        EOF
+        cat > /home/student/cka-assets/kustomize/overlays/prod/kustomization.yaml <<'EOF'
+        resources:
+          - ../../base
+        namespace: dojo-kustomize-exam
+        namePrefix: staging-
+        replicas:
+          - name: web
+            count: 1
+        labels:
+          - pairs:
+              environment: staging
+            includeSelectors: true
+        EOF
+        chown -R student:student /home/student/cka-assets
+      undo: rm -rf /home/student/cka-assets/kustomize
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-kustomize-exam, name: prod-web, minReplicas: 3}
+    - {type: jsonPath, kind: deployment, namespace: dojo-kustomize-exam, name: prod-web, path: "{.spec.template.metadata.labels.environment}", equals: prod}
+    - {type: jsonPath, kind: deployment, namespace: dojo-kustomize-exam, name: prod-web, path: "{.spec.replicas}", equals: "3"}
+hints:
+  - Render the overlay before applying it and inspect the resulting name and replicas.
+  - "Edit only the production kustomization: prefix, replica count and common label."
+  - Use `kubectl kustomize PATH`, then `kubectl apply -k PATH`.
+exam: {eligible: true}
+conflicts: [namespace:dojo-kustomize-exam, terminal:path:kustomize]

@@ -1,0 +1,10 @@
+id: 13-packaging-extensions
+name: Packaging and extensions
+summary: >-
+  Apply provided Kustomize overlays, operate a Helm release and define a
+  namespaced custom API resource.
+domains: [cluster-architecture]
+labs:
+  - kustomize-release
+  - helm-release
+  - crd-resource

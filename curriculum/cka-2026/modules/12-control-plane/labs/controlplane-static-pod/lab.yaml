@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: controlplane-static-pod
+title: Create a static Pod on the control-plane node
+learningStage: build
+domain: [cluster-architecture]
+skills: [static-pods, control-plane-components, kubelet]
+difficulty: 2
+targetMinutes: 7
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: rm -f /etc/kubernetes/manifests/dojo-static.yaml
+      undo: rm -f /etc/kubernetes/manifests/dojo-static.yaml
+grading:
+  all:
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/manifests/dojo-static.yaml, contains: 'name: dojo-static'}
+    - type: command
+      description: kubelet runs the static Pod on cp1
+      command: test "$(kubectl get pod -l dojo.cka/static=exam -o jsonpath='{.items[0].spec.nodeName}')" = cp1
+hints:
+  - Static Pods are created from files watched by kubelet, not with `kubectl apply`.
+  - Work on cp1 and inspect `/etc/kubernetes/manifests`.
+  - Generate a Pod YAML with `kubectl run --dry-run=client -o yaml`, then place it at the required path.
+exam: {eligible: true}
+conflicts: [cp1.manifest:dojo-static]

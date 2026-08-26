@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: services-nodeport
+title: Expose an application on a fixed node port
+learningStage: build
+domain: [services-networking]
+skills: [services, nodeport, endpointslices]
+difficulty: 2
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady: [{namespace: dojo-services-nodeport, kind: deployment, name: web}]
+grading:
+  all:
+    - {type: serviceHasEndpoints, namespace: dojo-services-nodeport, name: web-node, port: 80, minEndpoints: 2}
+    - {type: jsonPath, kind: service, namespace: dojo-services-nodeport, name: web-node, path: "{.spec.type}", equals: NodePort}
+    - {type: jsonPath, kind: service, namespace: dojo-services-nodeport, name: web-node, path: "{.spec.ports[0].nodePort}", equals: "30080"}
+    - {type: httpService, namespace: dojo-services-nodeport, service: web-node, port: 80}
+hints:
+  - Expose the existing Deployment; do not create another workload.
+  - The Service needs type NodePort and an explicit nodePort value.
+  - Use `kubectl expose`, then edit the generated Service if useful.
+exam: {eligible: true}
+conflicts: [namespace:dojo-services-nodeport, nodePort:30080]

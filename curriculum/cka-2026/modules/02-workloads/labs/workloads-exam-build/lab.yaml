@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: workloads-exam-build
+title: Build a constrained production workload
+learningStage: exam
+domain: [workloads-scheduling]
+skills: [deployments, resource-management, scheduling, kubectl-workflows]
+difficulty: 3
+targetMinutes: 8
+environment: {profile: standard}
+setup: {apply: [manifests/namespace.yaml]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-exam, name: processor, minReplicas: 3}
+    - {type: jsonPath, kind: deployment, namespace: dojo-workloads-exam, name: processor, path: "{.spec.template.spec.containers[0].resources.requests.cpu}", equals: 100m}
+    - {type: jsonPath, kind: deployment, namespace: dojo-workloads-exam, name: processor, path: "{.spec.template.spec.containers[0].resources.requests.memory}", equals: 64Mi}
+    - {type: jsonPath, kind: deployment, namespace: dojo-workloads-exam, name: processor, path: "{.spec.template.spec.containers[0].resources.limits.cpu}", equals: 250m}
+    - {type: jsonPath, kind: deployment, namespace: dojo-workloads-exam, name: processor, path: "{.spec.template.spec.containers[0].resources.limits.memory}", equals: 128Mi}
+    - {type: jsonPath, kind: deployment, namespace: dojo-workloads-exam, name: processor, path: "{.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].values[0]}", equals: worker2}
+hints:
+  - Generate a Deployment manifest, then add resources and required node affinity.
+  - The stable hostname label is `kubernetes.io/hostname`.
+  - Use `kubectl explain deployment.spec.template.spec.affinity.nodeAffinity`.
+exam: {eligible: true}
+conflicts: [namespace:dojo-workloads-exam]

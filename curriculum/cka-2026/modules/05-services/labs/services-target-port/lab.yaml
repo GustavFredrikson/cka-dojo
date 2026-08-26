@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: services-target-port
+title: A Service has endpoints but requests fail
+learningStage: contextual-fix
+domain: [services-networking, troubleshooting]
+skills: [services, endpointslices, service-debugging]
+difficulty: 2
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+  waitReady: [{namespace: dojo-services-port, kind: deployment, name: api}]
+grading:
+  all:
+    - {type: serviceHasEndpoints, namespace: dojo-services-port, name: api, port: 8080, minEndpoints: 2}
+    - {type: httpService, namespace: dojo-services-port, service: api, port: 8080}
+    - {type: jsonPath, kind: service, namespace: dojo-services-port, name: api, path: "{.spec.ports[0].targetPort}", equals: "80"}
+hints:
+  - Endpoints prove selector discovery, not that the selected port accepts traffic.
+  - Compare Service port and targetPort with the container's listening port.
+  - Patch only the Service targetPort.
+exam: {eligible: true}
+conflicts: [namespace:dojo-services-port]

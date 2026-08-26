@@ -49,6 +49,12 @@ skills:
     name: Pod logs and previous output
   - id: application-troubleshooting
     name: Application troubleshooting
+  - id: health-probes
+    name: Health probes
+  - id: autoscaling
+    name: Workload autoscaling
+  - id: resource-observability
+    name: Resource usage and logs
   - id: kubectl-workflows
     name: kubectl workflows
   - id: scheduling
@@ -69,6 +75,12 @@ skills:
     name: EndpointSlices
   - id: service-debugging
     name: Service troubleshooting
+  - id: nodeport
+    name: NodePort Services
+  - id: dns
+    name: Kubernetes DNS
+  - id: coredns
+    name: CoreDNS service discovery
   - id: rbac
     name: RBAC
   - id: roles
@@ -101,12 +113,27 @@ skills:
     name: Node troubleshooting
   - id: systemd
     name: systemd on cluster nodes
+  - id: static-pods
+    name: Static Pods
+  - id: control-plane-components
+    name: Control-plane components
+  - id: node-maintenance
+    name: Node maintenance
+  - id: helm
+    name: Helm
+  - id: kustomize
+    name: Kustomize
+  - id: custom-resources
+    name: Custom resources and CRDs
 
 modules:
   - 02-workloads
   - 03-scheduling
   - 04-rbac
   - 05-services
+  - 06-dns-networking
   - 07-network-policy
   - 09-storage
+  - 12-control-plane
+  - 13-packaging-extensions
   - 15-troubleshooting
