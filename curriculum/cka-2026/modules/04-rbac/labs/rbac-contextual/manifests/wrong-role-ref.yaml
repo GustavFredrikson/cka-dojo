@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-rbac-contextual}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: deploy-reader, namespace: dojo-rbac-contextual}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: deployment-reader, namespace: dojo-rbac-contextual}
+rules:
+  - {apiGroups: [apps], resources: [deployments], verbs: [get, list, watch]}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: empty-role, namespace: dojo-rbac-contextual}
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: deploy-reader, namespace: dojo-rbac-contextual}
+subjects:
+  - {kind: ServiceAccount, name: deploy-reader, namespace: dojo-rbac-contextual}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: empty-role}

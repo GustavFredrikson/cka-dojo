@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: workloads-build
+title: Build a constrained Deployment
+learningStage: build
+prerequisites: [workloads-follow]
+domain: [workloads-scheduling]
+skills: [deployments, resource-management, kubectl-workflows]
+difficulty: 1
+targetMinutes: 7
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-build, name: api, minReplicas: 3}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-build
+      name: api
+      path: "{.spec.template.metadata.labels.app}"
+      equals: api
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-build
+      name: api
+      path: "{.spec.template.spec.containers[0].resources.requests.cpu}"
+      equals: 25m
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-build
+      name: api
+      path: "{.spec.template.spec.containers[0].resources.limits.memory}"
+      equals: 64Mi
+exam: {eligible: true}
+conflicts: [namespace:dojo-workloads-build]

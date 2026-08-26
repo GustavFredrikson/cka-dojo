@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-rbac-inspect}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: viewer, namespace: dojo-rbac-inspect}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: config-reader, namespace: dojo-rbac-inspect}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: viewer-config, namespace: dojo-rbac-inspect}
+subjects:
+  - {kind: ServiceAccount, name: viewer, namespace: dojo-rbac-inspect}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: config-reader}

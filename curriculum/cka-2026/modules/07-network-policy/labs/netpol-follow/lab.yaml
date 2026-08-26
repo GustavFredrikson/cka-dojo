@@ -1,0 +1,44 @@
+schemaVersion: 1
+id: netpol-follow
+title: Open one path through default deny
+learningStage: follow
+domain: [services-networking]
+skills: [network-policies, pod-connectivity, selectors]
+difficulty: 1
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-netpol-follow, kind: deployment, name: server}
+    - {namespace: dojo-netpol-follow, kind: deployment, name: client}
+checkpoints:
+  - id: observe-deny
+    task: |
+      Run this from the terminal VM and observe it fail:
+      ```bash
+      kubectl -n dojo-netpol-follow exec deployment/client -- wget -T 2 -qO- http://server:80
+      ```
+      Then run `dojo check`.
+    grading:
+      all:
+        - type: command
+          description: default deny blocks client-to-server HTTP
+          command: kubectl -n dojo-netpol-follow exec deployment/client -- wget -T 2 -qO- http://server:80
+          exitCode: 1
+  - id: allow-client
+    task: |
+      Create NetworkPolicy `allow-client` selecting `app=server`. Allow ingress
+      from Pods labelled `role=client` on TCP port 80. Then run `dojo check`.
+    grading:
+      all:
+        - type: command
+          description: the labelled client can reach the server
+          command: kubectl -n dojo-netpol-follow exec deployment/client -- wget -T 2 -qO- http://server:80
+grading:
+  all:
+    - type: command
+      description: the labelled client can reach the server
+      command: kubectl -n dojo-netpol-follow exec deployment/client -- wget -T 2 -qO- http://server:80
+exam: {eligible: false}
+conflicts: [namespace:dojo-netpol-follow]

@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: workloads-inspect
+title: Trace Deployment ownership and configuration
+learningStage: inspect
+prerequisites: [workloads-config]
+domain: [workloads-scheduling]
+skills: [deployments, replicasets, configmaps, kubectl-workflows]
+difficulty: 1
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-workloads-inspect, kind: deployment, name: web}
+checkpoints:
+  - id: owner
+    task: Inspect a Pod's `ownerReferences`. Which object kind directly owns it?
+    answer: {accepted: [ReplicaSet], caseInsensitive: true}
+  - id: configuration
+    task: Which ConfigMap name is referenced by the Deployment's Pod template?
+    answer: {accepted: [web-config], caseInsensitive: true}
+  - id: replicas
+    task: How many desired replicas does the Deployment declare?
+    answer: {accepted: ["3"]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-inspect, name: web, minReplicas: 3}
+exam: {eligible: false}
+conflicts: [namespace:dojo-workloads-inspect]

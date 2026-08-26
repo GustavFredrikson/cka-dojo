@@ -1,0 +1,50 @@
+schemaVersion: 1
+id: workloads-rollout
+title: Perform and undo a rollout
+learningStage: inspect
+prerequisites: [workloads-inspect]
+domain: [workloads-scheduling]
+skills: [deployments, rollouts, kubectl-workflows]
+difficulty: 1
+targetMinutes: 7
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-workloads-rollout, kind: deployment, name: web}
+checkpoints:
+  - id: update
+    task: |
+      Update container `web` to `nginx:1.27-alpine`. Watch rollout status and
+      inspect rollout history, then run `dojo check`.
+    grading:
+      all:
+        - type: jsonPath
+          kind: deployment
+          namespace: dojo-workloads-rollout
+          name: web
+          path: "{.spec.template.spec.containers[0].image}"
+          equals: nginx:1.27-alpine
+        - {type: deploymentAvailable, namespace: dojo-workloads-rollout, name: web, minReplicas: 2}
+  - id: rollback
+    task: Use `kubectl rollout undo` to restore the previous revision, wait for it, and run `dojo check`.
+    grading:
+      all:
+        - type: jsonPath
+          kind: deployment
+          namespace: dojo-workloads-rollout
+          name: web
+          path: "{.spec.template.spec.containers[0].image}"
+          equals: nginx:1.26-alpine
+        - {type: deploymentAvailable, namespace: dojo-workloads-rollout, name: web, minReplicas: 2}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-rollout, name: web, minReplicas: 2}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-rollout
+      name: web
+      path: "{.spec.template.spec.containers[0].image}"
+      equals: nginx:1.26-alpine
+exam: {eligible: false}
+conflicts: [namespace:dojo-workloads-rollout]

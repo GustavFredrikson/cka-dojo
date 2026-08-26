@@ -135,9 +135,13 @@ kubectl delete namespace demo-rbac
 
 ## Labs
 
-`rbac-namespace-reader` asks for narrowly scoped read access and grades both
-what the subject may do and what the subject must not be able to do.
+The path progresses from an explicit ServiceAccount grant to independent
+construction, inspection, known repair and symptom-based authorization repair.
 
 ```bash
+dojo start rbac-follow
 dojo start rbac-namespace-reader
+dojo start rbac-inspect
+dojo start rbac-guided-binding
+dojo start rbac-contextual
 ```

@@ -1,0 +1,60 @@
+schemaVersion: 1
+id: workloads-follow
+title: Create, scale and update a Deployment
+learningStage: follow
+domain: [workloads-scheduling]
+skills: [deployments, rollouts, kubectl-workflows]
+difficulty: 1
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+checkpoints:
+  - id: create
+    task: |
+      Run:
+      ```bash
+      kubectl -n dojo-workloads-follow create deployment web --image=nginx:1.26-alpine --replicas=2
+      kubectl -n dojo-workloads-follow rollout status deployment/web
+      ```
+      Then run `dojo check`.
+    grading:
+      all:
+        - {type: deploymentAvailable, namespace: dojo-workloads-follow, name: web, minReplicas: 2}
+  - id: scale
+    task: |
+      Scale with `kubectl -n dojo-workloads-follow scale deployment web --replicas=3`,
+      wait for the rollout, then run `dojo check`.
+    grading:
+      all:
+        - {type: deploymentAvailable, namespace: dojo-workloads-follow, name: web, minReplicas: 3}
+        - type: jsonPath
+          kind: deployment
+          namespace: dojo-workloads-follow
+          name: web
+          path: "{.spec.replicas}"
+          equals: "3"
+  - id: update
+    task: |
+      Discover the container name, then update it to `nginx:1.27-alpine` with
+      `kubectl set image`. Watch `kubectl rollout status` and run `dojo check`.
+    grading:
+      all:
+        - type: jsonPath
+          kind: deployment
+          namespace: dojo-workloads-follow
+          name: web
+          path: "{.spec.template.spec.containers[0].image}"
+          equals: nginx:1.27-alpine
+        - {type: deploymentAvailable, namespace: dojo-workloads-follow, name: web, minReplicas: 3}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-follow, name: web, minReplicas: 3}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-follow
+      name: web
+      path: "{.spec.template.spec.containers[0].image}"
+      equals: nginx:1.27-alpine
+exam: {eligible: false}
+conflicts: [namespace:dojo-workloads-follow]

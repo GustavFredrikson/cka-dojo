@@ -1,0 +1,53 @@
+schemaVersion: 1
+id: rbac-follow
+title: Grant and verify Pod read access
+learningStage: follow
+domain: [cluster-architecture]
+skills: [rbac, roles, rolebindings, serviceaccounts, authorization-checks]
+difficulty: 1
+targetMinutes: 7
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+checkpoints:
+  - id: subject
+    task: |
+      Create the subject:
+      ```bash
+      kubectl -n dojo-rbac-follow create serviceaccount auditor
+      ```
+      Then run `dojo check`.
+    grading:
+      all:
+        - {type: objectExists, kind: serviceaccount, namespace: dojo-rbac-follow, name: auditor}
+  - id: role
+    task: |
+      Create the permission object:
+      ```bash
+      kubectl -n dojo-rbac-follow create role pod-reader --verb=get,list,watch --resource=pods
+      ```
+      Then run `dojo check`.
+    grading:
+      all:
+        - {type: objectExists, kind: role, namespace: dojo-rbac-follow, name: pod-reader}
+  - id: binding
+    task: |
+      Bind and verify it:
+      ```bash
+      kubectl -n dojo-rbac-follow create rolebinding auditor-pods --role=pod-reader --serviceaccount=dojo-rbac-follow:auditor
+      kubectl auth can-i list pods -n dojo-rbac-follow --as=system:serviceaccount:dojo-rbac-follow:auditor
+      kubectl auth can-i delete pods -n dojo-rbac-follow --as=system:serviceaccount:dojo-rbac-follow:auditor
+      ```
+      Run `dojo check` after observing `yes` then `no`.
+    grading:
+      all:
+        - {type: authCanI, serviceAccount: auditor, namespace: dojo-rbac-follow, verb: get, resource: pods, expect: true}
+        - {type: authCanI, serviceAccount: auditor, namespace: dojo-rbac-follow, verb: list, resource: pods, expect: true}
+        - {type: authCanI, serviceAccount: auditor, namespace: dojo-rbac-follow, verb: delete, resource: pods, expect: false}
+grading:
+  all:
+    - {type: authCanI, serviceAccount: auditor, namespace: dojo-rbac-follow, verb: get, resource: pods, expect: true}
+    - {type: authCanI, serviceAccount: auditor, namespace: dojo-rbac-follow, verb: list, resource: pods, expect: true}
+    - {type: authCanI, serviceAccount: auditor, namespace: dojo-rbac-follow, verb: delete, resource: pods, expect: false}
+exam: {eligible: false}
+conflicts: [namespace:dojo-rbac-follow]

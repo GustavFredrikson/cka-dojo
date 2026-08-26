@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-storage-follow}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: dojo-storage-follow}
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteOnce]
+  storageClassName: dojo-static
+  persistentVolumeReclaimPolicy: Delete
+  hostPath: {path: /var/lib/dojo/storage-follow, type: DirectoryOrCreate}

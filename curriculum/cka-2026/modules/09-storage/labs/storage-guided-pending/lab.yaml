@@ -1,0 +1,32 @@
+schemaVersion: 1
+id: storage-guided-pending
+title: Repair a known StorageClass mismatch
+learningStage: guided-fix
+prerequisites: [storage-inspect]
+domain: [storage, troubleshooting]
+skills: [persistent-volumes, persistent-volume-claims, storage-classes, storage-binding]
+difficulty: 1
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+grading:
+  all:
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-guided
+      name: data
+      path: "{.status.phase}"
+      equals: Bound
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-guided
+      name: data
+      path: "{.spec.volumeName}"
+      equals: dojo-storage-guided
+hints:
+  - PVC storage class is immutable after creation; recreate the claim.
+  - Preserve its name, requested capacity and access mode.
+  - "Use `storageClassName: dojo-static-guided`."
+exam: {eligible: false}
+conflicts: [namespace:dojo-storage-guided, pv:dojo-storage-guided]

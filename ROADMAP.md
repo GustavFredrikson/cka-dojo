@@ -89,14 +89,19 @@ workloads 15, storage 10.
 - [x] Live-dogfood the complete Services path and every contextual variant
 - [x] Scheduling path: Follow → Build → Inspect → guided repair → contextual
   troubleshooting, including clean restoration of node labels and taints
-- [ ] Expand RBAC into the same progression
-- [ ] Add the Storage progression (PV, PVC, StorageClass, binding, Pending)
-- [ ] Add Workloads command vocabulary before introducing CrashLoop diagnosis
+- [x] Workloads path: command vocabulary, configuration, inspection, rollouts,
+  guided CrashLoop repair and three contextual failure variants
+- [x] Expand RBAC into the same progression, with positive and negative
+  authorization checks
+- [x] Add the Storage progression (PV, PVC, StorageClass, binding, Pending)
+- [x] Add NetworkPolicy from default deny through contextual source, port and
+  destination failures
 - [ ] Add `dojo placement` once enough low-stage exercises exist to produce an
   honest per-skill result
 
-Current size: 12 dogfooded exercises across four modules. Next implementation
-slice: RBAC, then Storage.
+Current size: 33 dogfooded exercises across seven modules. Next curriculum
+slice: DNS/CoreDNS and Ingress/Gateway, followed by cluster lifecycle work that
+uses the special environments in milestone 5.
 
 ### Milestone 5 - special environments - `later`
 

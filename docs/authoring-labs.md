@@ -191,7 +191,7 @@ Run `dojo content types` for the current list.
 
 | Type | Checks |
 |---|---|
-| `deploymentAvailable` | `namespace`, `name`, `minReplicas` — available replicas, not just desired |
+| `deploymentAvailable` | `namespace`, `name`, `minReplicas` — updated and available replicas, so stale rollout replicas do not pass |
 | `podScheduled` | `namespace`, `name`, `scheduled`, `node` — scheduler binding, independent of readiness |
 | `serviceHasEndpoints` | `namespace`, `name`, `port`, `minEndpoints` — ready EndpointSlice addresses |
 | `httpService` | `namespace`, `service`, `port`, `path`, `expectStatus` — a real request from inside the cluster |

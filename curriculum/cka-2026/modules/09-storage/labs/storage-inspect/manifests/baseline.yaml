@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-storage-inspect}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: dojo-storage-inspect}
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteOnce]
+  storageClassName: dojo-static-inspect
+  persistentVolumeReclaimPolicy: Delete
+  hostPath: {path: /var/lib/dojo/storage-inspect, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data, namespace: dojo-storage-inspect}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: dojo-static-inspect
+  resources: {requests: {storage: 512Mi}}

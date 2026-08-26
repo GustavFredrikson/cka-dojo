@@ -109,3 +109,50 @@ func TestSchedulingModuleIsAnOrderedFiveStagePath(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandedCurriculumHasThirtyThreeBuildableExercises(t *testing.T) {
+	src, err := content.Resolve("../..", "")
+	if err != nil {
+		t.Fatalf("content: %v", err)
+	}
+	cur, err := Load(src, "cka-2026")
+	if err != nil {
+		t.Fatalf("curriculum: %v", err)
+	}
+
+	wantByModule := map[string]int{
+		"workloads":       7,
+		"scheduling":      5,
+		"rbac":            5,
+		"services":        5,
+		"network-policy":  5,
+		"storage":         5,
+		"troubleshooting": 1,
+	}
+	total := 0
+	for topic, want := range wantByModule {
+		module := cur.ModuleByID(topic)
+		if module == nil {
+			t.Errorf("missing module %q", topic)
+			continue
+		}
+		if got := len(module.Labs); got != want {
+			t.Errorf("%s has %d exercises, want %d", topic, got, want)
+		}
+		total += len(module.Labs)
+		for _, exercise := range module.Labs {
+			if exercise.Variants == nil {
+				continue
+			}
+			for i := range exercise.Variants.Options {
+				variant := &exercise.Variants.Options[i]
+				if _, err := exercise.Build(variant); err != nil {
+					t.Errorf("build %s variant %s: %v", exercise.ID, variant.ID, err)
+				}
+			}
+		}
+	}
+	if total != 33 {
+		t.Errorf("curriculum has %d exercises, want 33", total)
+	}
+}

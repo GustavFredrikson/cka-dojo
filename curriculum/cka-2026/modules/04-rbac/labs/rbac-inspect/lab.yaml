@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: rbac-inspect
+title: Explain a healthy RBAC grant
+learningStage: inspect
+prerequisites: [rbac-namespace-reader]
+domain: [cluster-architecture]
+skills: [rbac, roles, rolebindings, serviceaccounts, authorization-checks]
+difficulty: 1
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+checkpoints:
+  - id: subject
+    task: Which ServiceAccount receives the grant? Submit only its name.
+    answer: {accepted: [viewer], caseInsensitive: true}
+  - id: role
+    task: Which Role does the binding reference? Submit only its name.
+    answer: {accepted: [config-reader], caseInsensitive: true}
+  - id: denied
+    task: Which sensitive core resource is explicitly outside this role's rules?
+    answer: {accepted: [secrets, secret], caseInsensitive: true}
+grading:
+  all:
+    - {type: authCanI, serviceAccount: viewer, namespace: dojo-rbac-inspect, verb: list, resource: configmaps, expect: true}
+    - {type: authCanI, serviceAccount: viewer, namespace: dojo-rbac-inspect, verb: get, resource: secrets, expect: false}
+exam: {eligible: false}
+conflicts: [namespace:dojo-rbac-inspect]

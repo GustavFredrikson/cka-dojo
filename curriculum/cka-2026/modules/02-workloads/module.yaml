@@ -1,0 +1,16 @@
+id: 02-workloads
+name: Workloads
+summary: >-
+  Deployments, configuration, rollouts, ownership and the command vocabulary
+  used to operate and troubleshoot applications.
+domains:
+  - workloads-scheduling
+  - troubleshooting
+labs:
+  - workloads-follow
+  - workloads-build
+  - workloads-config
+  - workloads-inspect
+  - workloads-rollout
+  - workloads-guided-crashloop
+  - workloads-broken-app

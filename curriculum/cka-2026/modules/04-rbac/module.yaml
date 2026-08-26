@@ -6,4 +6,8 @@ summary: >-
 domains:
   - cluster-architecture
 labs:
+  - rbac-follow
   - rbac-namespace-reader
+  - rbac-inspect
+  - rbac-guided-binding
+  - rbac-contextual

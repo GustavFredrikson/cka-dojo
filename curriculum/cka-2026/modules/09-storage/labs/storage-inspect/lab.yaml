@@ -1,0 +1,32 @@
+schemaVersion: 1
+id: storage-inspect
+title: Explain a bound claim
+learningStage: inspect
+prerequisites: [storage-build]
+domain: [storage]
+skills: [persistent-volumes, persistent-volume-claims, storage-binding]
+difficulty: 1
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+checkpoints:
+  - id: phase
+    task: What is the PVC's current phase?
+    answer: {accepted: [Bound], caseInsensitive: true}
+  - id: volume
+    task: Which PersistentVolume did the controller bind to this claim?
+    answer: {accepted: [dojo-storage-inspect], caseInsensitive: true}
+  - id: mode
+    task: Which abbreviated access mode is shared by the claim and volume?
+    answer: {accepted: [RWO, ReadWriteOnce], caseInsensitive: true}
+grading:
+  all:
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-inspect
+      name: data
+      path: "{.status.phase}"
+      equals: Bound
+exam: {eligible: false}
+conflicts: [namespace:dojo-storage-inspect, pv:dojo-storage-inspect]

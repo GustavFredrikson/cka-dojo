@@ -1,0 +1,27 @@
+schemaVersion: 1
+id: netpol-build
+title: Allow one client and deny another
+learningStage: build
+prerequisites: [netpol-follow]
+domain: [services-networking]
+skills: [network-policies, pod-connectivity, selectors]
+difficulty: 2
+targetMinutes: 9
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-netpol-build, kind: deployment, name: server}
+    - {namespace: dojo-netpol-build, kind: deployment, name: client}
+    - {namespace: dojo-netpol-build, kind: deployment, name: intruder}
+grading:
+  all:
+    - type: command
+      description: role=client can reach server on TCP 80
+      command: kubectl -n dojo-netpol-build exec deployment/client -- wget -T 2 -qO- http://server:80
+    - type: command
+      description: role=intruder remains denied
+      command: kubectl -n dojo-netpol-build exec deployment/intruder -- wget -T 2 -qO- http://server:80
+      exitCode: 1
+exam: {eligible: true}
+conflicts: [namespace:dojo-netpol-build]

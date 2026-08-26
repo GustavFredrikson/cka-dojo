@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-workloads-rollout}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: dojo-workloads-rollout}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.26-alpine
+          resources: {requests: {cpu: 10m, memory: 16Mi}}

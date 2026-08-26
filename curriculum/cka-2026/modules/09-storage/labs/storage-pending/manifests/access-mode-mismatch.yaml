@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-storage-pending}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: dojo-storage-pending}
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteOnce]
+  storageClassName: dojo-static-pending
+  persistentVolumeReclaimPolicy: Delete
+  hostPath: {path: /var/lib/dojo/storage-pending, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data, namespace: dojo-storage-pending}
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: dojo-static-pending
+  resources: {requests: {storage: 512Mi}}

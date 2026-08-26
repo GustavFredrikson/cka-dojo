@@ -1,0 +1,32 @@
+schemaVersion: 1
+id: netpol-inspect
+title: Explain an allowed network path
+learningStage: inspect
+prerequisites: [netpol-build]
+domain: [services-networking]
+skills: [network-policies, pod-connectivity, selectors]
+difficulty: 1
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-netpol-inspect, kind: deployment, name: server}
+    - {namespace: dojo-netpol-inspect, kind: deployment, name: client}
+checkpoints:
+  - id: destination
+    task: Which `key=value` selector identifies the protected destination Pods?
+    answer: {accepted: [app=server], caseInsensitive: true}
+  - id: source
+    task: Which `key=value` selector permits the source Pods?
+    answer: {accepted: [role=client], caseInsensitive: true}
+  - id: port
+    task: Which protocol and port does the policy allow? Answer as `PROTOCOL/PORT`.
+    answer: {accepted: [TCP/80], caseInsensitive: true}
+grading:
+  all:
+    - type: command
+      description: the declared client-to-server path works
+      command: kubectl -n dojo-netpol-inspect exec deployment/client -- wget -T 2 -qO- http://server:80
+exam: {eligible: false}
+conflicts: [namespace:dojo-netpol-inspect]

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-netpol-contextual}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: server, namespace: dojo-netpol-contextual}
+spec: {replicas: 1, selector: {matchLabels: {app: server}}, template: {metadata: {labels: {app: server}}, spec: {containers: [{name: server, image: nginx:1.27-alpine, resources: {requests: {cpu: 10m, memory: 16Mi}}}]}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: server, namespace: dojo-netpol-contextual}
+spec: {selector: {app: server}, ports: [{port: 80, targetPort: 80}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: client, namespace: dojo-netpol-contextual}
+spec: {replicas: 1, selector: {matchLabels: {role: client}}, template: {metadata: {labels: {role: client}}, spec: {containers: [{name: client, image: busybox:1.36, command: [sh, -c, "sleep 3600"], resources: {requests: {cpu: 5m, memory: 8Mi}}}]}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: intruder, namespace: dojo-netpol-contextual}
+spec: {replicas: 1, selector: {matchLabels: {role: intruder}}, template: {metadata: {labels: {role: intruder}}, spec: {containers: [{name: intruder, image: busybox:1.36, command: [sh, -c, "sleep 3600"], resources: {requests: {cpu: 5m, memory: 8Mi}}}]}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: dojo-netpol-contextual}
+spec: {podSelector: {}, policyTypes: [Ingress]}

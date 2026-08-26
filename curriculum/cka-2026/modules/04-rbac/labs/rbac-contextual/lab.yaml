@@ -1,0 +1,33 @@
+schemaVersion: 1
+id: rbac-contextual
+title: A workload identity cannot inspect Deployments
+learningStage: contextual-fix
+prerequisites: [rbac-guided-binding]
+domain: [cluster-architecture, troubleshooting]
+skills: [rbac, roles, rolebindings, serviceaccounts, authorization-checks]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+variants:
+  options:
+    - id: wrong-api-group
+      apply: [manifests/wrong-api-group.yaml]
+      hints:
+        - Trace the grant, then compare the Role rule with the Deployment API resource.
+        - Deployments are not in the core API group.
+    - id: wrong-role-ref
+      apply: [manifests/wrong-role-ref.yaml]
+      hints:
+        - The permission object is correct; trace which object the binding actually references.
+        - A RoleBinding's `roleRef` is immutable, so recreate that binding if necessary.
+grading:
+  all:
+    - {type: authCanI, serviceAccount: deploy-reader, namespace: dojo-rbac-contextual, verb: get, resource: deployments, expect: true}
+    - {type: authCanI, serviceAccount: deploy-reader, namespace: dojo-rbac-contextual, verb: list, resource: deployments, expect: true}
+    - {type: authCanI, serviceAccount: deploy-reader, namespace: dojo-rbac-contextual, verb: watch, resource: deployments, expect: true}
+    - {type: authCanI, serviceAccount: deploy-reader, namespace: dojo-rbac-contextual, verb: delete, resource: deployments, expect: false}
+    - {type: authCanI, serviceAccount: deploy-reader, namespace: dojo-rbac-contextual, verb: get, resource: secrets, expect: false}
+hints:
+  - Use `kubectl auth can-i`, then inspect both the binding and the referenced role.
+exam: {eligible: true}
+conflicts: [namespace:dojo-rbac-contextual]

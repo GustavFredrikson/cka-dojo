@@ -1,0 +1,64 @@
+schemaVersion: 1
+id: workloads-broken-app
+title: An application rollout never becomes available
+learningStage: contextual-fix
+prerequisites: [workloads-guided-crashloop]
+domain: [workloads-scheduling, troubleshooting]
+skills: [deployments, configmaps, pod-logs, application-troubleshooting]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-workloads-broken, kind: deployment, name: web}
+variants:
+  options:
+    - id: bad-image
+      faults:
+        - type: kubernetesPatch
+          resource: deployment/web
+          namespace: dojo-workloads-broken
+          patch:
+            spec: {template: {spec: {containers: [{name: web, image: nginx:does-not-exist-dojo}]}}}
+      hints:
+        - Describe the new Pod and read its Events.
+        - Compare the running image reference with the required image.
+    - id: bad-command
+      faults:
+        - type: kubernetesPatch
+          resource: deployment/web
+          namespace: dojo-workloads-broken
+          patch:
+            spec: {template: {spec: {containers: [{name: web, command: [sh, -c, "exit 42"]}]}}}
+      hints:
+        - Inspect current and previous container logs.
+        - Compare the Pod template's command with the image's normal entrypoint.
+    - id: missing-config
+      faults:
+        - type: kubernetesPatch
+          resource: deployment/web
+          namespace: dojo-workloads-broken
+          patch:
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: web
+                      envFrom: [{configMapRef: {name: absent-settings}}]
+      hints:
+        - Describe the Pod and read the reason before inspecting logs.
+        - Check every configuration object referenced by the Pod template.
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-broken, name: web, minReplicas: 2}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-broken
+      name: web
+      path: "{.spec.template.spec.containers[0].image}"
+      equals: nginx:1.27-alpine
+hints:
+  - Work from Deployment to ReplicaSet to Pod status, Events and logs.
+exam: {eligible: true}
+conflicts: [namespace:dojo-workloads-broken]

@@ -134,6 +134,21 @@ metadata:
 	}
 }
 
+func TestNamespaceNamesSupportsCompactMetadata(t *testing.T) {
+	manifest := `apiVersion: v1
+kind: Namespace
+metadata: {name: compact}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: config, namespace: compact}
+`
+	got := namespaceNames(manifest)
+	if len(got) != 1 || got[0] != "compact" {
+		t.Fatalf("namespaceNames = %v, want [compact]", got)
+	}
+}
+
 func TestAnswerMatchingIsTrimmedAndOptionallyCaseInsensitive(t *testing.T) {
 	a := &Answer{Accepted: []string{"app=web"}, CaseInsensitive: true}
 	if !a.Matches("  APP=WEB  ") {

@@ -1,0 +1,12 @@
+id: 07-network-policy
+name: NetworkPolicy
+summary: >-
+  Default deny, selected destinations, allowed sources and ports, plus
+  evidence-based diagnosis of blocked Pod traffic.
+domains: [services-networking, troubleshooting]
+labs:
+  - netpol-follow
+  - netpol-build
+  - netpol-inspect
+  - netpol-guided
+  - netpol-contextual

@@ -3,6 +3,7 @@ package lab
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/gustavfredrikson/cka-dojo/internal/fault"
 	"github.com/gustavfredrikson/cka-dojo/internal/grader"
 	"github.com/gustavfredrikson/cka-dojo/internal/ui"
+	"gopkg.in/yaml.v3"
 )
 
 // Runner executes one lab plan against one environment.
@@ -145,30 +147,28 @@ exit 1
 	return nil
 }
 
-// namespaceNames scrapes Namespace object names out of a manifest. A YAML
-// round-trip would be more correct, but lab baselines are hand-written and
-// this keeps the dependency surface small.
+// namespaceNames decodes every document because authoring supports both block
+// and compact YAML metadata. Missing a namespace here creates a stop/start
+// race: apply can reach the API server while the old namespace is terminating.
 func namespaceNames(manifest string) []string {
 	var out []string
-	docs := strings.Split(manifest, "\n---")
-	for _, doc := range docs {
-		if !strings.Contains(doc, "kind: Namespace") {
-			continue
+	decoder := yaml.NewDecoder(strings.NewReader(manifest))
+	for {
+		var document struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name string `yaml:"name"`
+			} `yaml:"metadata"`
 		}
-		inMeta := false
-		for _, line := range strings.Split(doc, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "metadata:" {
-				inMeta = true
-				continue
-			}
-			if inMeta && strings.HasPrefix(trimmed, "name:") {
-				out = append(out, strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "name:")), `"'`))
-				break
-			}
-			if inMeta && !strings.HasPrefix(line, " ") && trimmed != "" {
-				inMeta = false
-			}
+		err := decoder.Decode(&document)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			break
+		}
+		if document.Kind == "Namespace" && document.Metadata.Name != "" {
+			out = append(out, document.Metadata.Name)
 		}
 	}
 	return out

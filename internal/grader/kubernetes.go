@@ -265,11 +265,11 @@ func (d *DeploymentAvailable) want() int {
 }
 
 func (d *DeploymentAvailable) Describe() string {
-	return fmt.Sprintf("deployment %s in %s has at least %d available replica(s)", d.Name, ns(d.Namespace), d.want())
+	return fmt.Sprintf("deployment %s in %s has at least %d updated and available replica(s)", d.Name, ns(d.Namespace), d.want())
 }
 
 func (d *DeploymentAvailable) Check(ctx context.Context, env *environment.Manager) Result {
-	args := nsArgs([]string{"get", "deployment", d.Name, "-o", "jsonpath={.status.availableReplicas}"}, d.Namespace)
+	args := nsArgs([]string{"get", "deployment", d.Name, "-o", "jsonpath={.status.availableReplicas}{\" \"}{.status.updatedReplicas}"}, d.Namespace)
 	res, err := env.KubectlRaw(ctx, args...)
 	if err != nil {
 		return broken(d.Describe(), err)
@@ -277,12 +277,18 @@ func (d *DeploymentAvailable) Check(ctx context.Context, env *environment.Manage
 	if res.ExitCode != 0 {
 		return fail(d.Describe(), "the deployment was not found")
 	}
-	got := strings.TrimSpace(res.Stdout)
-	n, _ := strconv.Atoi(got)
-	if n >= d.want() {
+	fields := strings.Fields(res.Stdout)
+	available, updated := 0, 0
+	if len(fields) > 0 {
+		available, _ = strconv.Atoi(fields[0])
+	}
+	if len(fields) > 1 {
+		updated, _ = strconv.Atoi(fields[1])
+	}
+	if available >= d.want() && updated >= d.want() {
 		return pass(d.Describe())
 	}
-	return fail(d.Describe(), "%d available", n)
+	return fail(d.Describe(), "%d available, %d updated", available, updated)
 }
 
 // ServiceHasEndpoints checks that a Service actually resolves to backends.

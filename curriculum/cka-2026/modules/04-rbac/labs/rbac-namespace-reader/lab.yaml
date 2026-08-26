@@ -2,6 +2,8 @@ schemaVersion: 1
 id: rbac-namespace-reader
 title: Read-only access to one namespace
 learningStage: build
+prerequisites:
+  - rbac-follow
 domain:
   - cluster-architecture
 skills:

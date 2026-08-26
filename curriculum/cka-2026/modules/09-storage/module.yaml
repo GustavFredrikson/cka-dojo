@@ -1,0 +1,12 @@
+id: 09-storage
+name: Storage
+summary: >-
+  PersistentVolumes, claims, StorageClasses, binding constraints and systematic
+  diagnosis of Pending claims.
+domains: [storage, troubleshooting]
+labs:
+  - storage-follow
+  - storage-build
+  - storage-inspect
+  - storage-guided-pending
+  - storage-pending

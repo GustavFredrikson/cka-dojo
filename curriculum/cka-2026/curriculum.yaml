@@ -33,6 +33,24 @@ domains:
 # Progress is tracked per skill, not per lab: "26 of 50 labs done" says nothing
 # about whether you can fix a Service under time pressure.
 skills:
+  - id: deployments
+    name: Deployments
+  - id: replicasets
+    name: ReplicaSets and ownership
+  - id: rollouts
+    name: Rollouts and rollback
+  - id: configmaps
+    name: ConfigMaps
+  - id: secrets
+    name: Secrets
+  - id: resource-management
+    name: Resource requests and limits
+  - id: pod-logs
+    name: Pod logs and previous output
+  - id: application-troubleshooting
+    name: Application troubleshooting
+  - id: kubectl-workflows
+    name: kubectl workflows
   - id: scheduling
     name: Scheduling decisions
   - id: taints
@@ -57,8 +75,24 @@ skills:
     name: Roles and ClusterRoles
   - id: rolebindings
     name: Bindings
+  - id: serviceaccounts
+    name: ServiceAccounts
   - id: authorization-checks
     name: Verifying authorization
+  - id: network-policies
+    name: NetworkPolicy
+  - id: pod-connectivity
+    name: Pod connectivity
+  - id: network-diagnostics
+    name: Network diagnostics
+  - id: persistent-volumes
+    name: PersistentVolumes
+  - id: persistent-volume-claims
+    name: PersistentVolumeClaims
+  - id: storage-classes
+    name: StorageClasses
+  - id: storage-binding
+    name: Volume binding
   - id: kubelet
     name: kubelet
   - id: containerd
@@ -69,7 +103,10 @@ skills:
     name: systemd on cluster nodes
 
 modules:
+  - 02-workloads
   - 03-scheduling
   - 04-rbac
   - 05-services
+  - 07-network-policy
+  - 09-storage
   - 15-troubleshooting

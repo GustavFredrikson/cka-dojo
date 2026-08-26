@@ -1,0 +1,46 @@
+schemaVersion: 1
+id: netpol-contextual
+title: One client cannot reach a healthy Service
+learningStage: contextual-fix
+prerequisites: [netpol-guided]
+domain: [services-networking, troubleshooting]
+skills: [network-policies, pod-connectivity, selectors, network-diagnostics]
+difficulty: 2
+targetMinutes: 9
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-netpol-contextual, kind: deployment, name: server}
+    - {namespace: dojo-netpol-contextual, kind: deployment, name: client}
+    - {namespace: dojo-netpol-contextual, kind: deployment, name: intruder}
+variants:
+  options:
+    - id: wrong-source
+      apply: [manifests/wrong-source.yaml]
+      hints:
+        - Compare the allow policy's source selector with labels on the intended client.
+        - The intended source has `role=client`.
+    - id: wrong-port
+      apply: [manifests/wrong-port.yaml]
+      hints:
+        - Compare policy ports with Service and container ports.
+        - The actual HTTP destination is TCP 80.
+    - id: wrong-destination
+      apply: [manifests/wrong-destination.yaml]
+      hints:
+        - Determine which destination Pods the allow policy actually selects.
+        - The protected server Pods have `app=server`.
+grading:
+  all:
+    - type: command
+      description: the intended client reaches the healthy server
+      command: kubectl -n dojo-netpol-contextual exec deployment/client -- wget -T 2 -qO- http://server:80
+    - type: command
+      description: the intruder remains denied
+      command: kubectl -n dojo-netpol-contextual exec deployment/intruder -- wget -T 2 -qO- http://server:80
+      exitCode: 1
+hints:
+  - Prove the Service has endpoints, then test from named source Pods and inspect applicable policies.
+exam: {eligible: true}
+conflicts: [namespace:dojo-netpol-contextual]

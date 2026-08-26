@@ -1,0 +1,32 @@
+schemaVersion: 1
+id: workloads-config
+title: Configure a workload from a ConfigMap and Secret
+learningStage: build
+prerequisites: [workloads-build]
+domain: [workloads-scheduling, cluster-architecture]
+skills: [deployments, configmaps, secrets, kubectl-workflows]
+difficulty: 2
+targetMinutes: 9
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+grading:
+  all:
+    - {type: objectExists, kind: configmap, namespace: dojo-workloads-config, name: web-settings}
+    - {type: objectExists, kind: secret, namespace: dojo-workloads-config, name: api-credentials}
+    - type: jsonPath
+      kind: secret
+      namespace: dojo-workloads-config
+      name: api-credentials
+      path: "{.data.token}"
+      equals: c3dvcmRmaXNo
+    - {type: deploymentAvailable, namespace: dojo-workloads-config, name: web, minReplicas: 2}
+    - type: command
+      description: the Deployment imports both required configuration objects
+      command: >-
+        kubectl -n dojo-workloads-config get deploy web -o yaml |
+        grep -q 'name: web-settings' &&
+        kubectl -n dojo-workloads-config get deploy web -o yaml |
+        grep -q 'name: api-credentials'
+exam: {eligible: true}
+conflicts: [namespace:dojo-workloads-config]

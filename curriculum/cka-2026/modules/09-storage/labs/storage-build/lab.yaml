@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: storage-build
+title: Create a claim and consuming Pod
+learningStage: build
+prerequisites: [storage-follow]
+domain: [storage]
+skills: [persistent-volumes, persistent-volume-claims, storage-binding]
+difficulty: 1
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+grading:
+  all:
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-build
+      name: cache
+      path: "{.status.phase}"
+      equals: Bound
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-build
+      name: cache
+      path: "{.spec.volumeName}"
+      equals: dojo-storage-build
+    - {type: podScheduled, namespace: dojo-storage-build, name: cache-user}
+exam: {eligible: true}
+conflicts: [namespace:dojo-storage-build, pv:dojo-storage-build]

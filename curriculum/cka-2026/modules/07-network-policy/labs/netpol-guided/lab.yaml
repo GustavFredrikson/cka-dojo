@@ -1,0 +1,26 @@
+schemaVersion: 1
+id: netpol-guided
+title: Correct a known source-selector mismatch
+learningStage: guided-fix
+prerequisites: [netpol-inspect]
+domain: [services-networking, troubleshooting]
+skills: [network-policies, pod-connectivity, selectors, network-diagnostics]
+difficulty: 1
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+  waitReady:
+    - {namespace: dojo-netpol-guided, kind: deployment, name: server}
+    - {namespace: dojo-netpol-guided, kind: deployment, name: client}
+grading:
+  all:
+    - type: command
+      description: role=client can reach app=server on TCP 80
+      command: kubectl -n dojo-netpol-guided exec deployment/client -- wget -T 2 -qO- http://server:80
+hints:
+  - Compare `ingress.from.podSelector` with labels on client Pods.
+  - The required source label is `role=client`.
+  - Patch or edit NetworkPolicy `allow-client`; do not remove default deny.
+exam: {eligible: false}
+conflicts: [namespace:dojo-netpol-guided]

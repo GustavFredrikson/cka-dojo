@@ -1,0 +1,45 @@
+schemaVersion: 1
+id: storage-pending
+title: A claim never binds
+learningStage: contextual-fix
+prerequisites: [storage-guided-pending]
+domain: [storage, troubleshooting]
+skills: [persistent-volumes, persistent-volume-claims, storage-classes, storage-binding]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+variants:
+  options:
+    - id: class-mismatch
+      apply: [manifests/class-mismatch.yaml]
+      hints:
+        - Compare `storageClassName` on the claim and available volume.
+        - Claim class is immutable; recreate the claim if it is wrong.
+    - id: capacity-mismatch
+      apply: [manifests/capacity-mismatch.yaml]
+      hints:
+        - Compare requested storage with available capacity.
+        - Recreate the claim with a request the designated PV can satisfy.
+    - id: access-mode-mismatch
+      apply: [manifests/access-mode-mismatch.yaml]
+      hints:
+        - Compare access modes on both sides of the binding.
+        - The designated volume supports ReadWriteOnce, not ReadWriteMany.
+grading:
+  all:
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-pending
+      name: data
+      path: "{.status.phase}"
+      equals: Bound
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-pending
+      name: data
+      path: "{.spec.volumeName}"
+      equals: dojo-storage-pending
+hints:
+  - Describe the claim and compare every binding constraint with the available PV.
+exam: {eligible: true}
+conflicts: [namespace:dojo-storage-pending, pv:dojo-storage-pending]

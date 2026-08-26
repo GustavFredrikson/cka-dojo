@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: rbac-guided-binding
+title: Correct a RoleBinding subject
+learningStage: guided-fix
+prerequisites: [rbac-inspect]
+domain: [cluster-architecture, troubleshooting]
+skills: [rbac, rolebindings, serviceaccounts, authorization-checks]
+difficulty: 1
+targetMinutes: 5
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+grading:
+  all:
+    - {type: authCanI, serviceAccount: builder, namespace: dojo-rbac-guided, verb: get, resource: pods, expect: true}
+    - {type: authCanI, serviceAccount: builder, namespace: dojo-rbac-guided, verb: list, resource: pods, expect: true}
+    - {type: authCanI, serviceAccount: wrong-subject, namespace: dojo-rbac-guided, verb: list, resource: pods, expect: false}
+hints:
+  - Compare the RoleBinding subject with the ServiceAccount the task names.
+  - A ServiceAccount subject includes both name and namespace.
+  - Edit `subjects[0].name` to `builder`, then verify with `kubectl auth can-i`.
+exam: {eligible: false}
+conflicts: [namespace:dojo-rbac-guided]

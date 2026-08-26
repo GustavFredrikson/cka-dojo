@@ -1,0 +1,14 @@
+# Worked solution
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-client, namespace: dojo-netpol-follow}
+spec:
+  podSelector: {matchLabels: {app: server}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {role: client}}
+      ports: [{protocol: TCP, port: 80}]
+```

@@ -1,0 +1,40 @@
+schemaVersion: 1
+id: workloads-guided-crashloop
+title: Repair a known bad container command
+learningStage: guided-fix
+prerequisites: [workloads-rollout]
+domain: [workloads-scheduling, troubleshooting]
+skills: [deployments, pod-logs, application-troubleshooting]
+difficulty: 1
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-workloads-guided, kind: deployment, name: web}
+  faults:
+    - type: kubernetesPatch
+      resource: deployment/web
+      namespace: dojo-workloads-guided
+      patch:
+        spec:
+          template:
+            spec:
+              containers:
+                - name: web
+                  command: [sh, -c, "echo broken command >&2; exit 1"]
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-workloads-guided, name: web, minReplicas: 2}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-workloads-guided
+      name: web
+      path: "{.spec.template.spec.containers[0].image}"
+      equals: nginx:1.27-alpine
+hints:
+  - Compare the current container command with what the image normally starts.
+  - Use `kubectl logs --previous` to see the last failed container output.
+  - Remove the command override from the Pod template and watch the rollout.
+exam: {eligible: false}
+conflicts: [namespace:dojo-workloads-guided]
