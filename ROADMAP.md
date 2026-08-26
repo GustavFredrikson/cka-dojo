@@ -64,6 +64,7 @@ Implemented graders: `deploymentAvailable`, `podScheduled`,
 ### Milestone 3 - learning UX - `done`
 
 - [x] `dojo learn <module>` renders `lesson.md` with an interactive pager
+- [x] `dojo learn` shows per-module and overall attempted/passed/mastered totals
 - [x] Lessons for all current modules, with a validated common structure
 - [x] `dojo progress` skill table and `--by-lab` attempt history
 - [x] `dojo recommend` = exam weight x lack of mastery x recency

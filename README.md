@@ -57,7 +57,8 @@ completions and a working kubeconfig. From there `ssh cp1`, `ssh worker1` and
 
 ```bash
 dojo labs                  # what is available
-dojo learn services        # concise theory and diagnostic workflow
+dojo learn                 # topics with attempted, passed and mastered totals
+dojo learn services        # one topic's lesson and per-exercise progress
 dojo recommend             # what your history says to practise next
 dojo start <lab>           # build the scenario, print the task
 dojo shell                 # go and fix it
