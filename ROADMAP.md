@@ -35,6 +35,10 @@ that lags upstream, so **never** follow upstream automatically.
 | Kubernetes | `1.35.8` (latest patch of exam minor 1.35) | `environments/*/environment.yaml` |
 | Calico | `v3.32.1` (3.32 line is tested against k8s 1.34-1.36) | `environments/*/environment.yaml` |
 | metrics-server | `v0.9.0` | `environments/standard/environment.yaml` |
+| local-path-provisioner | `v0.0.37` (non-default class) | `environments/standard/environment.yaml` |
+| ingress-nginx | `controller-v1.15.1` (NodePort) | `environments/standard/environment.yaml` |
+| Gateway API | `v1.6.1` standard channel | `environments/standard/environment.yaml` |
+| NGINX Gateway Fabric | `v2.7.0` (NodePort) | `environments/standard/environment.yaml` |
 | Guest OS | Ubuntu 24.04 LTS (Lima `_images/ubuntu-24.04`) | `internal/provider/lima` |
 | Lima network | `user-v2`, `192.168.104.0/24` | `environments/*/environment.yaml` |
 
@@ -105,30 +109,25 @@ workloads 15, storage 10.
 - [ ] Add `dojo placement` once enough low-stage exercises exist to produce an
   honest per-skill result
 
-Current size: 56 dogfooded exercises across twelve modules.
+Current size: 62 dogfooded exercises across thirteen modules.
 
 **Known competency gaps, in priority order.** These are bullets in the
 published curriculum with no exercise behind them:
 
-1. Ingress controllers, Ingress resources and the Gateway API — nothing at
-   all; `08-ingress` is reserved for it. Needs an ingress controller and the
-   Gateway API CRDs as pinned environment addons.
-2. Dynamic volume provisioning — `09-storage` teaches static volumes only, and
-   says so in its lesson. Needs a provisioner (local-path) as an addon.
-3. LoadBalancer and ExternalName Service types.
-4. CoreDNS configuration: the DNS labs use CoreDNS but never repair it.
-5. kubeadm cluster creation, cluster lifecycle/upgrade and an HA control
+1. kubeadm cluster creation, cluster lifecycle/upgrade and an HA control
    plane — these wait on the milestone 5 and 7 environments.
-6. Extension interfaces (CNI/CSI/CRI) are mentioned but never exercised.
+2. LoadBalancer and ExternalName Service types.
+3. CoreDNS configuration: the DNS labs use CoreDNS but never repair it.
+4. Extension interfaces (CNI/CSI/CRI) are mentioned but never exercised.
 
 That list is ordered by curriculum bullet. Section 4.1 reorders the same
 ground by expected exam yield and adds etcd backup and restore, which is
 missing from it entirely and is not blocked on a new environment profile.
 
-Domain balance still leans away from the published weighting: cluster
-architecture is under-represented (about 19% of lab-domain tags against a 25%
-target) and workloads over-represented (about 23% against 15%). Closing gaps 1
-and 5 corrects both.
+Ingress, the Gateway API and dynamic provisioning are now covered, which
+closed the two largest holes. Domain balance still leans away from the
+published weighting: cluster architecture remains under-represented against
+its 25% target, and closing gap 1 is what corrects it.
 
 ### Milestone 5 - special environments - `later`
 
@@ -348,6 +347,35 @@ exam UI.
     re-applies a manifest prunes it. It now repels a separate `cache`
     workload, applied through a `kubernetesApply` fault so that cache settles
     on both workers before checkout exists.
+
+2026-09-03, macOS arm64, same cluster (second pass):
+
+- Added four pinned platform addons and the six exercises that need them:
+  `08-ingress` (Ingress follow/build/inspect, a 503 repair, and a Gateway API
+  build) plus `storage-dynamic`. All six passed the full live loop.
+- `dojo setup` installs the addons into an existing cluster without touching
+  the rest: markers are per-script, so only the two new steps ran, and a
+  second invocation finished in 11s.
+- Three real installation defects, each found only by running it:
+  - NGINX Gateway Fabric's deploy bundle carries NginxGateway and NginxProxy
+    *instances* but not their CRDs, so it must be preceded by `deploy/crds.yaml`.
+  - That CRD bundle cannot be applied client-side: the NginxProxy schema alone
+    exceeds the 262144-byte `last-applied-configuration` annotation limit, so
+    it needs `--server-side`.
+  - NGF v2 names its control plane `nginx-gateway`, not `ngf-nginx-gateway-fabric`,
+    and provisions a data plane per Gateway rather than up front.
+- `ingress-inspect` claimed `/api/` worked under an `Exact` rule. It does not:
+  `/api` matches, nginx 301s to `/api/`, and the redirect target no longer
+  matches its own rule. The exercise now teaches that, having been corrected
+  against observed output.
+- `storage-dynamic` first had the learner create the StorageClass, which is
+  cluster-scoped and so survived teardown -- the same hazard as
+  `storage-reclaim`. It now ships in the baseline as
+  `kubernetes.io/no-provisioner`, which also exposes that `provisioner` and
+  `volumeBindingMode` are immutable and force a delete-and-recreate.
+- local-path is installed deliberately as a non-default StorageClass, so the
+  exercises that depend on a claim staying Pending still behave.
+
 - The five-stage Scheduling path passed live end to end. Selector and taint
   variants both produced genuine Pending Pods, accepted distinct valid fixes,
   and reset correctly. Teardown removed every training namespace and restored

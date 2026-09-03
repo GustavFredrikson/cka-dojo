@@ -23,8 +23,10 @@ checkpoints:
     answer: {accepted: [shop], caseInsensitive: true}
   - id: api-pathtype
     task: |
-      A request for `/api/users` returns 404 even though `/api/` works.
-      Which `pathType` value on the `/api` rule explains that?
+      Ask for `/api` and the backend answers with a 301 to `/api/`. Follow
+      that redirect and you get a 404 from the controller. Which `pathType`
+      value on the `/api` rule explains why its own redirect target stops
+      matching?
     answer: {accepted: [Exact], caseInsensitive: true}
 grading:
   all:
