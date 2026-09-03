@@ -185,15 +185,15 @@ func (n *NodeReady) Describe() string {
 
 func (n *NodeReady) Check(ctx context.Context, env *environment.Manager) Result {
 	res, err := env.KubectlRaw(ctx, "get", "node", n.Node,
-		"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}{\" \"}{.spec.unschedulable}")
+		"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}"+fieldSep+"{.spec.unschedulable}")
 	if err != nil {
 		return broken(n.Describe(), err)
 	}
 	if res.ExitCode != 0 {
 		return fail(n.Describe(), "the node is not registered with the API server")
 	}
-	fields := strings.Fields(res.Stdout + " ")
-	ready := len(fields) > 0 && fields[0] == "True"
+	fields := splitFields(res.Stdout, 2)
+	ready := fields[0] == "True"
 	if ready != n.wantReady() {
 		state := "NotReady"
 		if ready {
@@ -202,7 +202,7 @@ func (n *NodeReady) Check(ctx context.Context, env *environment.Manager) Result 
 		return fail(n.Describe(), "the node is %s", state)
 	}
 	if n.Schedulable != nil {
-		unschedulable := len(fields) > 1 && fields[1] == "true"
+		unschedulable := fields[1] == "true"
 		if unschedulable == *n.Schedulable {
 			if unschedulable {
 				return fail(n.Describe(), "the node is cordoned")

@@ -10,10 +10,43 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/gustavfredrikson/cka-dojo/internal/environment"
 	"github.com/gustavfredrikson/cka-dojo/internal/spec"
 )
+
+// fieldSep separates several jsonpath expressions inside one kubectl query.
+//
+// Splitting such output on whitespace is wrong: an absent status field renders
+// as the empty string rather than as a zero, so `{.a}{" "}{.b}` with no `.a`
+// yields " 7" and a positional whitespace split reads 7 as the *first* value.
+// A literal separator keeps the positions honest when either side is empty.
+const fieldSep = "|"
+
+// splitFields divides kubectl output produced with fieldSep into exactly n
+// pieces, padding with empty strings so callers can index without bounds
+// checks.
+func splitFields(out string, n int) []string {
+	parts := strings.SplitN(strings.TrimSpace(out), fieldSep, n)
+	for len(parts) < n {
+		parts = append(parts, "")
+	}
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// parseCount reads a replica-style counter, treating an absent value as zero.
+func parseCount(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
+}
 
 // Result is one check's outcome.
 type Result struct {

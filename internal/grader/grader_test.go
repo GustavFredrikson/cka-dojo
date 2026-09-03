@@ -158,3 +158,45 @@ func TestHTTPServiceFlagsPrecedeTheSeparator(t *testing.T) {
 		t.Errorf("first argument after `--` is %q, want wget", args[sep+1])
 	}
 }
+
+// TestSplitFieldsKeepsPositionsWhenAValueIsAbsent pins the defect that a
+// whitespace split hid: kubectl renders a missing status field as the empty
+// string, so `{.status.availableReplicas}|{.status.updatedReplicas}` on a
+// Deployment with nothing available yet returns "|2". Splitting that on
+// whitespace collapses it to a single field and reports 2 replicas *available*
+// when in truth 2 are merely updated and none are available -- which sends a
+// learner looking at a rollout instead of at the scheduler.
+func TestSplitFieldsKeepsPositionsWhenAValueIsAbsent(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		out                        string
+		wantAvailable, wantUpdated int
+	}{
+		{"both present", "2|2", 2, 2},
+		{"available absent", "|2", 0, 2},
+		{"updated absent", "2|", 2, 0},
+		{"both absent", "|", 0, 0},
+		{"empty output", "", 0, 0},
+		{"surrounding whitespace", " 3 | 3 \n", 3, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := splitFields(tc.out, 2)
+			if len(fields) != 2 {
+				t.Fatalf("splitFields(%q) = %#v, want two fields", tc.out, fields)
+			}
+			available, updated := parseCount(fields[0]), parseCount(fields[1])
+			if available != tc.wantAvailable || updated != tc.wantUpdated {
+				t.Errorf("splitFields(%q) = %d available, %d updated; want %d, %d",
+					tc.out, available, updated, tc.wantAvailable, tc.wantUpdated)
+			}
+		})
+	}
+}
+
+func TestParseCountTreatsNonNumericAsZero(t *testing.T) {
+	for _, in := range []string{"", "  ", "<none>", "null"} {
+		if got := parseCount(in); got != 0 {
+			t.Errorf("parseCount(%q) = %d, want 0", in, got)
+		}
+	}
+}

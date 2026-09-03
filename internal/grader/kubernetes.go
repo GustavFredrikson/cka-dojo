@@ -91,6 +91,21 @@ func ns(n string) string {
 	return n
 }
 
+// in renders the location half of a requirement line.
+//
+// ObjectExists and JSONPath take the kind from lab.yaml, so it may name a
+// cluster-scoped resource: printing "pv/data in default" is untrue and sends
+// a learner looking in a namespace that has nothing to do with the object.
+// When no namespace was given, say nothing about location — accurate both for
+// cluster-scoped kinds and for ones resolved against the context's namespace.
+// Graders whose kind is fixed and namespaced keep using ns().
+func in(namespace string) string {
+	if namespace == "" {
+		return ""
+	}
+	return " in " + namespace
+}
+
 func nsArgs(args []string, namespace string) []string {
 	if namespace != "" {
 		return append(args, "-n", namespace)
@@ -121,7 +136,7 @@ func (o *ObjectExists) Describe() string {
 	if o.Absent {
 		verb = "does not exist"
 	}
-	return fmt.Sprintf("%s/%s in %s %s", o.Kind, o.Name, ns(o.Namespace), verb)
+	return fmt.Sprintf("%s/%s%s %s", o.Kind, o.Name, in(o.Namespace), verb)
 }
 
 func (o *ObjectExists) Check(ctx context.Context, env *environment.Manager) Result {
@@ -214,7 +229,7 @@ func (j *JSONPath) Validate() error {
 }
 
 func (j *JSONPath) Describe() string {
-	return fmt.Sprintf("%s/%s in %s: %s %s", j.Kind, j.Name, ns(j.Namespace), j.Path, j.Match.describe())
+	return fmt.Sprintf("%s/%s%s: %s %s", j.Kind, j.Name, in(j.Namespace), j.Path, j.Match.describe())
 }
 
 func (j *JSONPath) Check(ctx context.Context, env *environment.Manager) Result {
@@ -269,7 +284,7 @@ func (d *DeploymentAvailable) Describe() string {
 }
 
 func (d *DeploymentAvailable) Check(ctx context.Context, env *environment.Manager) Result {
-	args := nsArgs([]string{"get", "deployment", d.Name, "-o", "jsonpath={.status.availableReplicas}{\" \"}{.status.updatedReplicas}"}, d.Namespace)
+	args := nsArgs([]string{"get", "deployment", d.Name, "-o", "jsonpath={.status.availableReplicas}" + fieldSep + "{.status.updatedReplicas}"}, d.Namespace)
 	res, err := env.KubectlRaw(ctx, args...)
 	if err != nil {
 		return broken(d.Describe(), err)
@@ -277,14 +292,8 @@ func (d *DeploymentAvailable) Check(ctx context.Context, env *environment.Manage
 	if res.ExitCode != 0 {
 		return fail(d.Describe(), "the deployment was not found")
 	}
-	fields := strings.Fields(res.Stdout)
-	available, updated := 0, 0
-	if len(fields) > 0 {
-		available, _ = strconv.Atoi(fields[0])
-	}
-	if len(fields) > 1 {
-		updated, _ = strconv.Atoi(fields[1])
-	}
+	counts := splitFields(res.Stdout, 2)
+	available, updated := parseCount(counts[0]), parseCount(counts[1])
 	if available >= d.want() && updated >= d.want() {
 		return pass(d.Describe())
 	}
