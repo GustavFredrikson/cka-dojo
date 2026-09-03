@@ -37,9 +37,14 @@ type scriptVars struct {
 	CalicoVersion  string
 	MetricsVersion string
 	HelmVersion    string
-	StudentUser    string
-	JoinCommand    string
-	Kubeconfig     string
+	// Platform addon versions. See Profile.Addons for why each is installed.
+	LocalPathVersion    string
+	IngressNginxVersion string
+	GatewayAPIVersion   string
+	NGFVersion          string
+	StudentUser         string
+	JoinCommand         string
+	Kubeconfig          string
 }
 
 func (m *Manager) vars(ctx context.Context, node string) (*scriptVars, error) {
@@ -60,8 +65,13 @@ func (m *Manager) vars(ctx context.Context, node string) (*scriptVars, error) {
 		CalicoVersion:  m.Profile.CNI.Version,
 		MetricsVersion: m.Profile.Addons.MetricsServer,
 		HelmVersion:    m.Profile.Addons.Helm,
-		StudentUser:    StudentUser,
-		Kubeconfig:     AdminKubeconfig,
+
+		LocalPathVersion:    m.Profile.Addons.LocalPathProvisioner,
+		IngressNginxVersion: m.Profile.Addons.IngressNginx,
+		GatewayAPIVersion:   m.Profile.Addons.GatewayAPI,
+		NGFVersion:          m.Profile.Addons.NginxGatewayFabric,
+		StudentUser:         StudentUser,
+		Kubeconfig:          AdminKubeconfig,
 	}
 	if n := m.Profile.NodeByName(node); n != nil {
 		v.Role = n.Role
@@ -325,6 +335,12 @@ func (m *Manager) kubeadmProvision(ctx context.Context, force bool) error {
 	}
 
 	if err := m.step(ctx, cp.Name, "addons.sh", force, "installing metrics-server"); err != nil {
+		return err
+	}
+	if err := m.step(ctx, cp.Name, "dynamic-storage.sh", force, "installing the local-path provisioner"); err != nil {
+		return err
+	}
+	if err := m.step(ctx, cp.Name, "ingress.sh", force, "installing ingress-nginx and the Gateway API"); err != nil {
 		return err
 	}
 	if err := m.distributeKubeconfig(ctx); err != nil {

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-storage-dynamic}
+---
+# Ships unable to provision anything, on purpose.
+#
+# kubernetes.io/no-provisioner is the marker for "static volumes only", so a
+# claim against this class waits for a PersistentVolume that nobody is going
+# to create. Correcting it is the exercise.
+#
+# Keeping the class in the baseline also keeps `dojo reset` in charge of it: a
+# StorageClass is cluster-scoped, so one the learner created from nothing
+# would outlive teardown and leave half the task already done next time.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: dojo-dynamic}
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Delete
+volumeBindingMode: Immediate

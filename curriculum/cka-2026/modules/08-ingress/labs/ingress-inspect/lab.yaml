@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: ingress-inspect
+title: Explain what an Ingress will and will not match
+learningStage: inspect
+prerequisites: [ingress-build]
+domain: [services-networking]
+skills: [ingress, ingress-controllers, services]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-ingress-inspect, kind: deployment, name: shop}
+    - {namespace: dojo-ingress-inspect, kind: deployment, name: api}
+    - {namespace: dojo-ingress-inspect, kind: deployment, name: client}
+checkpoints:
+  - id: host
+    task: Which host must a request carry for Ingress `storefront` to match it?
+    answer: {accepted: [store.dojo.test], caseInsensitive: true}
+  - id: shop-backend
+    task: Which Service serves a request for `/shop/catalogue`?
+    answer: {accepted: [shop], caseInsensitive: true}
+  - id: api-pathtype
+    task: |
+      A request for `/api/users` returns 404 even though `/api/` works.
+      Which `pathType` value on the `/api` rule explains that?
+    answer: {accepted: [Exact], caseInsensitive: true}
+grading:
+  all:
+    - type: command
+      description: the shop path still serves through the Ingress
+      command: "kubectl -n dojo-ingress-inspect exec deploy/client -- wget -T 5 -q -O- --header 'Host: store.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/shop/"
+      stdout: {contains: served-by-shop}
+exam: {eligible: false}
+conflicts: [namespace:dojo-ingress-inspect]

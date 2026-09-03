@@ -162,7 +162,8 @@ func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 		"services":             7,
 		"dns-networking":       3,
 		"network-policy":       5,
-		"storage":              6,
+		"ingress":              5,
+		"storage":              7,
 		"admission":            3,
 		"control-plane":        3,
 		"packaging-extensions": 3,
@@ -192,7 +193,7 @@ func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 			}
 		}
 	}
-	if want := 56; total != want {
+	if want := 62; total != want {
 		t.Errorf("curriculum has %d exercises, want %d", total, want)
 	}
 	if got := cur.LabCount(); got != total {

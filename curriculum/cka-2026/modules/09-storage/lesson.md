@@ -9,9 +9,21 @@ Pod → PVC → matching PV → storage
 ```
 
 A claim describes requested capacity, access modes and class. Binding needs a
-compatible available volume. Dynamic provisioning creates that volume through
-a StorageClass provisioner; these deterministic labs use static volumes so the
-matching rules remain visible.
+compatible available volume, and there are two ways to get one.
+
+*Static*: an administrator creates the PersistentVolume ahead of time, and the
+claim has to match something that already exists. Most exercises here work
+this way, because it keeps the matching rules visible.
+
+*Dynamic*: the claim names a StorageClass, and its provisioner creates a
+volume to fit. This cluster runs `rancher.io/local-path`, so
+`storage-dynamic` practises the real thing rather than describing it.
+
+`volumeBindingMode` decides *when* that happens. `Immediate` provisions as
+soon as the claim exists; `WaitForFirstConsumer` holds off until a Pod is
+scheduled, so node-local storage lands on the node that will actually use it.
+A claim sitting Pending with `waiting for first consumer` is working
+correctly.
 
 ## Objects involved
 
@@ -68,6 +80,7 @@ status phase and the claim's `spec.volumeName`.
 ```bash
 dojo start storage-follow
 dojo start storage-build
+dojo start storage-dynamic
 dojo start storage-reclaim
 dojo start storage-inspect
 dojo start storage-guided-pending

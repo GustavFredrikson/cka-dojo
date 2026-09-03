@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: ingress-wrong-backend
+title: The Ingress exists, and every request returns 503
+learningStage: contextual-fix
+prerequisites: [ingress-inspect]
+domain: [services-networking, troubleshooting]
+skills: [ingress, ingress-controllers, service-debugging, services]
+difficulty: 2
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+  waitReady:
+    - {namespace: dojo-ingress-wrong-backend, kind: deployment, name: web}
+    - {namespace: dojo-ingress-wrong-backend, kind: deployment, name: client}
+grading:
+  all:
+    - {type: objectExists, kind: ingress, namespace: dojo-ingress-wrong-backend, name: web}
+    - type: command
+      description: shop.dojo.test reaches the web Pod through the Ingress
+      command: "kubectl -n dojo-ingress-wrong-backend exec deploy/client -- wget -T 5 -q -O- --header 'Host: shop.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/"
+      stdout: {contains: served-by-web}
+    - {type: serviceHasEndpoints, namespace: dojo-ingress-wrong-backend, name: web, minEndpoints: 1}
+hints:
+  - The request reached the controller -- a 503 is nginx answering, not a
+    network failure. So a rule matched, and the trouble is behind it.
+  - "`kubectl describe ingress web` prints the backend it resolved for each
+    rule. Read that line carefully rather than the Ingress YAML."
+  - The Pods are healthy and the Service has endpoints. Compare the port the
+    Ingress rule asks the Service for against the ports the Service actually
+    publishes.
+  - "Fix the rule to name a port the Service exposes -- either the number 80
+    or the port's name -- with `kubectl -n dojo-ingress-wrong-backend edit
+    ingress web`."
+exam: {eligible: true}
+conflicts: [namespace:dojo-ingress-wrong-backend]

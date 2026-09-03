@@ -1,0 +1,13 @@
+id: 08-ingress
+name: Ingress and Gateway API
+summary: >-
+  Getting traffic from outside the cluster to a Service: Ingress with a real
+  controller, the failure modes that produce 404 and 503, and the same job
+  expressed through the Gateway API.
+domains: [services-networking, troubleshooting]
+labs:
+  - ingress-follow
+  - ingress-build
+  - ingress-inspect
+  - ingress-wrong-backend
+  - gateway-build

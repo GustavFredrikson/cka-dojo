@@ -1,0 +1,38 @@
+schemaVersion: 1
+id: storage-dynamic
+title: Let the cluster create the volume for you
+learningStage: build
+prerequisites: [storage-build]
+domain: [storage]
+skills: [dynamic-provisioning, storage-classes, persistent-volume-claims, storage-binding]
+difficulty: 2
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+grading:
+  all:
+    - {type: objectExists, kind: storageclass, name: dojo-dynamic}
+    - type: jsonPath
+      kind: storageclass
+      name: dojo-dynamic
+      path: "{.provisioner}"
+      equals: rancher.io/local-path
+    - type: jsonPath
+      kind: storageclass
+      name: dojo-dynamic
+      path: "{.volumeBindingMode}"
+      equals: WaitForFirstConsumer
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-storage-dynamic
+      name: scratch
+      path: "{.status.phase}"
+      equals: Bound
+    - {type: podScheduled, namespace: dojo-storage-dynamic, name: writer}
+    - type: command
+      description: a volume was provisioned automatically for the claim
+      command: kubectl get pv -o jsonpath='{.items[?(@.spec.storageClassName=="dojo-dynamic")].spec.claimRef.name}'
+      stdout: {equals: scratch}
+exam: {eligible: true}
+conflicts: [namespace:dojo-storage-dynamic, storageclass:dojo-dynamic]

@@ -1,0 +1,55 @@
+schemaVersion: 1
+id: ingress-follow
+title: Route your first request from outside
+learningStage: follow
+domain: [services-networking]
+skills: [ingress, ingress-controllers, services]
+difficulty: 1
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-ingress-follow, kind: deployment, name: web}
+    - {namespace: dojo-ingress-follow, kind: deployment, name: client}
+checkpoints:
+  - id: which-class
+    task: |
+      Every Ingress must name the controller that should serve it. Run
+      `kubectl get ingressclass` and answer with the name of the class this
+      cluster provides.
+    answer: {accepted: [nginx], caseInsensitive: true}
+  - id: observe-404
+    task: |
+      Nothing routes yet. Run this and watch it fail, then run `dojo check`:
+      ```bash
+      kubectl -n dojo-ingress-follow exec deploy/client -- \
+        wget -T 5 -q -O- --header 'Host: shop.dojo.test' \
+        http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/
+      ```
+    grading:
+      all:
+        - type: command
+          description: the controller has no rule for this host yet
+          command: "kubectl -n dojo-ingress-follow exec deploy/client -- wget -T 5 -q -O- --header 'Host: shop.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/"
+          exitCode: 1
+  - id: create-ingress
+    task: |
+      Create Ingress `web` in `dojo-ingress-follow`: class `nginx`, host
+      `shop.dojo.test`, and one rule sending path `/` with
+      `pathType: Prefix` to Service `web` on port `80`. Then run `dojo check`.
+    grading:
+      all:
+        - type: command
+          description: a request for shop.dojo.test reaches the web Pod
+          command: "kubectl -n dojo-ingress-follow exec deploy/client -- wget -T 5 -q -O- --header 'Host: shop.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/"
+          stdout: {contains: served-by-web}
+grading:
+  all:
+    - {type: objectExists, kind: ingress, namespace: dojo-ingress-follow, name: web}
+    - type: command
+      description: a request for shop.dojo.test reaches the web Pod
+      command: "kubectl -n dojo-ingress-follow exec deploy/client -- wget -T 5 -q -O- --header 'Host: shop.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/"
+      stdout: {contains: served-by-web}
+exam: {eligible: false}
+conflicts: [namespace:dojo-ingress-follow]

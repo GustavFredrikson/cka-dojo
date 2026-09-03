@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-ingress-follow}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: web-content, namespace: dojo-ingress-follow}
+data:
+  index.html: "served-by-web\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: dojo-ingress-follow}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports: [{containerPort: 80}]
+          volumeMounts:
+            - {name: content, mountPath: /usr/share/nginx/html}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+      volumes:
+        - name: content
+          configMap: {name: web-content}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: web, namespace: dojo-ingress-follow}
+spec:
+  selector: {app: web}
+  ports: [{name: http, port: 80, targetPort: 80}]
+---
+# A place to curl from. The cluster has no external load balancer, so the
+# exercises reach the controller through its in-cluster Service.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: client, namespace: dojo-ingress-follow}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: client}}
+  template:
+    metadata: {labels: {app: client}}
+    spec:
+      containers:
+        - name: client
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: 25m, memory: 16Mi}

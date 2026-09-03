@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# metrics-server, so `kubectl top` works. Nothing else is installed by
-# default: a mostly vanilla kubeadm cluster is the better teaching surface,
-# and per-module components get installed by the modules that need them.
+# metrics-server, so `kubectl top` works.
+#
+# The cluster stays close to vanilla kubeadm, because that is the better
+# teaching surface. The exceptions are components the published curriculum
+# examines but that a bare kubeadm cluster cannot provide at all -- a dynamic
+# provisioner, an Ingress controller and a Gateway API implementation. Those
+# live in dynamic-storage.sh and ingress.sh, pinned like everything else.
 set -euo pipefail
 export KUBECONFIG={{.Kubeconfig}}
 

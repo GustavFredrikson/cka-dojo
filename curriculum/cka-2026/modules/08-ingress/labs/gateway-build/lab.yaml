@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: gateway-build
+title: Do the same job with the Gateway API
+learningStage: build
+prerequisites: [ingress-build]
+domain: [services-networking]
+skills: [gateway-api, ingress-controllers, services]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-gateway-build, kind: deployment, name: web}
+    - {namespace: dojo-gateway-build, kind: deployment, name: client}
+grading:
+  all:
+    - {type: objectExists, kind: gateway, namespace: dojo-gateway-build, name: storefront}
+    - type: jsonPath
+      kind: gateway
+      namespace: dojo-gateway-build
+      name: storefront
+      path: "{.spec.gatewayClassName}"
+      equals: nginx
+    - type: command
+      description: the Gateway reports itself Programmed
+      command: kubectl -n dojo-gateway-build get gateway storefront -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}'
+      stdout: {equals: "True"}
+    - {type: objectExists, kind: httproute, namespace: dojo-gateway-build, name: web}
+    - type: command
+      description: the HTTPRoute was accepted by its parent Gateway
+      command: kubectl -n dojo-gateway-build get httproute web -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}'
+      stdout: {equals: "True"}
+exam: {eligible: true}
+conflicts: [namespace:dojo-gateway-build]

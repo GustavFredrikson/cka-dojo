@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: ingress-build
+title: Fan two paths out to two Services
+learningStage: build
+prerequisites: [ingress-follow]
+domain: [services-networking]
+skills: [ingress, ingress-controllers, services, selectors]
+difficulty: 2
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-ingress-build, kind: deployment, name: shop}
+    - {namespace: dojo-ingress-build, kind: deployment, name: api}
+    - {namespace: dojo-ingress-build, kind: deployment, name: client}
+grading:
+  all:
+    - {type: objectExists, kind: ingress, namespace: dojo-ingress-build, name: storefront}
+    - type: command
+      description: store.dojo.test/shop/ reaches the shop Service
+      command: "kubectl -n dojo-ingress-build exec deploy/client -- wget -T 5 -q -O- --header 'Host: store.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/shop/"
+      stdout: {contains: served-by-shop}
+    - type: command
+      description: store.dojo.test/api/ reaches the api Service
+      command: "kubectl -n dojo-ingress-build exec deploy/client -- wget -T 5 -q -O- --header 'Host: store.dojo.test' http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/api/"
+      stdout: {contains: served-by-api}
+exam: {eligible: true}
+conflicts: [namespace:dojo-ingress-build]

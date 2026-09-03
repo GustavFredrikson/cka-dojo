@@ -85,6 +85,12 @@ skills:
     name: Service troubleshooting
   - id: nodeport
     name: NodePort Services
+  - id: ingress
+    name: Ingress resources
+  - id: ingress-controllers
+    name: Ingress controllers
+  - id: gateway-api
+    name: Gateway API
   - id: dns
     name: Kubernetes DNS
   - id: coredns
@@ -145,6 +151,7 @@ modules:
   - 05-services
   - 06-dns-networking
   - 07-network-policy
+  - 08-ingress
   - 09-storage
   - 10-admission
   - 12-control-plane

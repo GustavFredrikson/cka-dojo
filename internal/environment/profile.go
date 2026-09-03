@@ -51,6 +51,19 @@ type Profile struct {
 	Addons struct {
 		MetricsServer string `yaml:"metricsServer"`
 		Helm          string `yaml:"helm"`
+		// LocalPathProvisioner backs the dynamic-provisioning exercises. A
+		// kubeadm cluster on plain VMs has no CSI driver, so without it
+		// "implement storage classes and dynamic volume provisioning" cannot
+		// be practised at all.
+		LocalPathProvisioner string `yaml:"localPathProvisioner"`
+		// IngressNginx is the Ingress controller. Curriculum revision
+		// 2025-02-18 examines Ingress resources and controllers directly.
+		IngressNginx string `yaml:"ingressNginx"`
+		// GatewayAPI is the CRD bundle; NginxGatewayFabric is the controller
+		// that makes those objects do something. Both are needed for a
+		// Gateway to reach Programmed rather than sitting Unaccepted.
+		GatewayAPI         string `yaml:"gatewayAPI"`
+		NginxGatewayFabric string `yaml:"nginxGatewayFabric"`
 	} `yaml:"addons"`
 
 	Network struct {

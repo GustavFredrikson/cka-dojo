@@ -25,6 +25,14 @@ addons:
   metricsServer: "v0.9.0"
   # Helm 3 rather than 4: most CKA material still assumes v3 semantics.
   helm: "v3.21.4"
+  # The only dynamic provisioner available on plain VMs. Installed non-default
+  # on purpose, so exercises that need a Pending claim still get one.
+  localPathProvisioner: "v0.0.37"
+  # North-south traffic. Both are exposed as NodePort; there is no cloud load
+  # balancer here, and two hostNetwork controllers would collide on :80.
+  ingressNginx: "controller-v1.15.1"
+  gatewayAPI: "v1.6.1"
+  nginxGatewayFabric: "v2.7.0"
 
 network:
   lima: user-v2
