@@ -158,3 +158,48 @@ modules:
   - 13-packaging-extensions
   - 14-observability
   - 15-troubleshooting
+
+# Published competencies with no exercise behind them yet. `dojo readiness`
+# prints these alongside its verdict, so a learner is never told they are
+# ready on the strength of labs that exist while the exam also tests things
+# this content set does not cover. Delete an entry the day a lab lands.
+knownGaps:
+  - id: etcd-backup-restore
+    name: etcd backup and restore
+    domain: cluster-architecture
+    note: >-
+      Near-certain on the exam. Nothing here takes a snapshot or restores one.
+  - id: cluster-upgrade
+    name: Cluster lifecycle and kubeadm upgrade
+    domain: cluster-architecture
+    note: Waiting on the upgrade-1.34 environment profile.
+  - id: kubeadm-bootstrap
+    name: Cluster creation and joining a node
+    domain: cluster-architecture
+    note: Waiting on the raw environment profile.
+  - id: ha-control-plane
+    name: Highly-available control plane
+    domain: cluster-architecture
+    note: Waiting on the ha environment profile.
+  - id: certificate-management
+    name: Certificates and kubeconfig repair
+    domain: cluster-architecture
+    note: >-
+      No lab expires a certificate or breaks a kubeconfig.
+  - id: extension-interfaces
+    name: Extension interfaces (CNI, CSI, CRI)
+    domain: cluster-architecture
+    note: Mentioned in lessons, never exercised.
+  - id: coredns-configuration
+    name: CoreDNS configuration
+    domain: services-networking
+    note: The DNS labs consume CoreDNS but never repair it.
+  - id: service-types
+    name: LoadBalancer and ExternalName Services
+    domain: services-networking
+    note: Only ClusterIP and NodePort are exercised.
+  - id: workload-primitives
+    name: DaemonSet, StatefulSet, Job and CronJob
+    domain: workloads-scheduling
+    note: >-
+      Deployments are covered thoroughly; the other workload kinds are not.

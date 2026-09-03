@@ -100,9 +100,26 @@ type Curriculum struct {
 	Domains   []Domain `yaml:"domains"`
 	Skills    []Skill  `yaml:"skills"`
 	ModuleIDs []string `yaml:"modules"`
+	// KnownGaps are published competencies with no exercise behind them.
+	// Declaring them here keeps `dojo readiness` honest: without it the
+	// report would score a learner against the labs that happen to exist and
+	// call that exam readiness.
+	KnownGaps []Gap `yaml:"knownGaps"`
 
 	Dir     string    `yaml:"-"`
 	Modules []*Module `yaml:"-"`
+}
+
+// Gap is a competency the published curriculum examines and this content set
+// does not yet exercise. It is content metadata, not a to-do list: ROADMAP.md
+// tracks the work, while this drives the caveats on a readiness report.
+type Gap struct {
+	ID   string `yaml:"id"`
+	Name string `yaml:"name"`
+	// Domain is the published domain the competency belongs to.
+	Domain string `yaml:"domain"`
+	// Note says what is missing, in one line, for the reader of a report.
+	Note string `yaml:"note"`
 }
 
 // Load reads curriculum/<id> with its modules and labs.
@@ -306,6 +323,22 @@ func (c *Curriculum) Validate() []error {
 			add("duplicate skill %q", s.ID)
 		}
 		seenSkill[s.ID] = true
+	}
+	seenGap := map[string]bool{}
+	for _, g := range c.KnownGaps {
+		if g.ID == "" {
+			add("knownGaps entry needs an id")
+		}
+		if seenGap[g.ID] {
+			add("duplicate knownGap %q", g.ID)
+		}
+		seenGap[g.ID] = true
+		if g.Domain != "" && !seenDomain[g.Domain] {
+			add("knownGap %q names undeclared domain %q", g.ID, g.Domain)
+		}
+		if g.Note == "" {
+			add("knownGap %q needs a note", g.ID)
+		}
 	}
 	seenLab := map[string]string{}
 	for _, m := range c.Modules {

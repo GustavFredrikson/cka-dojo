@@ -82,6 +82,8 @@ Implemented graders: `deploymentAvailable`, `podScheduled`,
 - [x] First Services slice: Follow → Build → Inspect → guided repair →
   contextual troubleshooting
 - [x] Stage-aware recommendations that never select locked exercises
+- [x] `dojo readiness`: exam-weighted mastery with hard gates, and the
+  curriculum's own declared gaps printed as caveats on the verdict
 
 ### Milestone 4 - curriculum expansion - `in progress`
 
@@ -251,6 +253,16 @@ Beyond the milestone 6 bullets already recorded:
 - [ ] While there: an `equalsAny` form, for the cases where several literal
   spellings are correct and quantity parsing does not apply.
 
+### 4.5 Readiness — `done`, with one dependency
+
+`dojo readiness` (settled decision 10) answers "am I ready" from existing
+history. Two things still cap what it can claim, both tracked above:
+
+- It cannot see pace under load, only per-lab pace. That needs milestone 6
+  (§4.3).
+- Its `knownGaps` list is only as honest as 4.1. Every gap closed there is a
+  caveat removed from the verdict.
+
 ---
 
 ## 5. Deliberate non-goals (v1)
@@ -281,6 +293,13 @@ exam UI.
    a second provider must not touch curriculum code.
 9. **Content is embedded but overridable** via `DOJO_CONTENT` / `--content`, so
    a colleague needs one binary while we develop against the repo.
+10. **Readiness names what it cannot see.** `dojo readiness` scores only
+    mastered labs, weighted by published domain weight, and an untouched
+    domain blocks a ready verdict outright rather than being averaged away.
+    Because a score over the labs that happen to exist is not a statement
+    about the exam, `curriculum.yaml` declares `knownGaps` — published
+    competencies with no exercise behind them — and the report prints them
+    with every verdict. Delete a gap entry the day its lab lands.
 
 ## 7. Known gaps / risks
 
