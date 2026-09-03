@@ -1,0 +1,27 @@
+schemaVersion: 1
+id: scheduling-anti-affinity
+title: Keep two replicas off the same node
+learningStage: build
+prerequisites: [scheduling-build]
+domain: [workloads-scheduling]
+skills: [affinity, scheduling, selectors, deployments]
+difficulty: 3
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-scheduling-anti-affinity, name: web, minReplicas: 2}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-scheduling-anti-affinity
+      name: web
+      path: "{.spec.template.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey}"
+      equals: kubernetes.io/hostname
+    - type: command
+      description: the two replicas occupy two different nodes
+      command: kubectl -n dojo-scheduling-anti-affinity get pods -l app=web -o jsonpath='{.items[*].spec.nodeName}' | tr ' ' '\n' | sort -u | wc -l
+      stdout: {equals: "2"}
+exam: {eligible: true}
+conflicts: [namespace:dojo-scheduling-anti-affinity]

@@ -68,6 +68,7 @@ status phase and the claim's `spec.volumeName`.
 ```bash
 dojo start storage-follow
 dojo start storage-build
+dojo start storage-reclaim
 dojo start storage-inspect
 dojo start storage-guided-pending
 dojo start storage-pending

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-storage-reclaim}
+---
+# Shipped with the dangerous default on purpose: the exercise is to make this
+# volume outlive its claim. Keeping the PV in the baseline also means `dojo
+# reset` owns it — a cluster-scoped object the learner created would survive
+# teardown and leave the lab passing before it had been re-solved.
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: dojo-storage-reclaim}
+spec:
+  capacity: {storage: 2Gi}
+  accessModes: [ReadWriteOnce]
+  storageClassName: dojo-static-reclaim
+  persistentVolumeReclaimPolicy: Delete
+  hostPath: {path: /var/lib/dojo/storage-reclaim, type: DirectoryOrCreate}

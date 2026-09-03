@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: quota-build
+title: Cap what a namespace may consume
+learningStage: build
+domain: [workloads-scheduling]
+skills: [resource-quotas, resource-management, deployments]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+grading:
+  all:
+    - {type: objectExists, kind: resourcequota, namespace: dojo-quota-build, name: team-quota}
+    - type: jsonPath
+      kind: resourcequota
+      namespace: dojo-quota-build
+      name: team-quota
+      path: "{.spec.hard.pods}"
+      equals: "4"
+    - type: jsonPath
+      kind: resourcequota
+      namespace: dojo-quota-build
+      name: team-quota
+      path: "{.status.used.pods}"
+      equals: "2"
+    - {type: deploymentAvailable, namespace: dojo-quota-build, name: web, minReplicas: 2}
+exam: {eligible: true}
+conflicts: [namespace:dojo-quota-build]

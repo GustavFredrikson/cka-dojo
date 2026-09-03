@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-scheduling-spread-pending}
+---
+# The blockers. One cache Pod per worker, held there by its own anti-affinity,
+# so every schedulable node carries the tier=cache label that checkout refuses
+# to sit beside.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cache, namespace: dojo-scheduling-spread-pending}
+spec:
+  replicas: 2
+  selector: {matchLabels: {tier: cache}}
+  template:
+    metadata: {labels: {tier: cache}}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {tier: cache}
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: cache
+          image: nginx:1.27-alpine
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}

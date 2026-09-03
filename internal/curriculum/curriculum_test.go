@@ -77,7 +77,14 @@ func TestModuleLookupUsesFriendlyTopicNames(t *testing.T) {
 	}
 }
 
-func TestSchedulingModuleIsAnOrderedFiveStagePath(t *testing.T) {
+// TestSchedulingModuleClimbsItsStagesInOrder pins the property that makes a
+// module teachable: reading it top to bottom never asks for a stage of
+// independence the learner has not reached yet, and never names a
+// prerequisite that comes later in the same module. A module may carry more
+// than one exercise at a stage — scheduling covers both affinity and taints
+// at build and contextual-fix — so the stages must not decrease rather than
+// having to increase by exactly one.
+func TestSchedulingModuleClimbsItsStagesInOrder(t *testing.T) {
 	src, err := content.Resolve("../..", "")
 	if err != nil {
 		t.Fatalf("content: %v", err)
@@ -87,19 +94,44 @@ func TestSchedulingModuleIsAnOrderedFiveStagePath(t *testing.T) {
 		t.Fatalf("curriculum: %v", err)
 	}
 	module := cur.ModuleByID("scheduling")
-	if module == nil || len(module.Labs) != 5 {
-		t.Fatalf("scheduling module = %#v, want five exercises", module)
+	if module == nil {
+		t.Fatal("no scheduling module")
 	}
+
+	seen := map[string]bool{}
+	previous := 0
+	stages := map[int]bool{}
 	for i, exercise := range module.Labs {
 		info, ok := exercise.LearningStage.Info()
-		if !ok || info.Level != i+1 {
-			t.Errorf("exercise %s stage = %+v, %v; want level %d", exercise.ID, info, ok, i+1)
+		if !ok {
+			t.Errorf("exercise %s has unknown stage %q", exercise.ID, exercise.LearningStage)
+			continue
 		}
-		if i > 0 && (len(exercise.Prerequisites) != 1 || exercise.Prerequisites[0] != module.Labs[i-1].ID) {
-			t.Errorf("exercise %s does not require previous stage %s", exercise.ID, module.Labs[i-1].ID)
+		if info.Level < previous {
+			t.Errorf("exercise %s (stage %d) comes after a stage %d exercise", exercise.ID, info.Level, previous)
+		}
+		previous = info.Level
+		stages[info.Level] = true
+		for _, req := range exercise.Prerequisites {
+			if !seen[req] {
+				t.Errorf("exercise %s (position %d) requires %s, which is not earlier in the module", exercise.ID, i+1, req)
+			}
+		}
+		seen[exercise.ID] = true
+	}
+
+	// Follow through contextual-fix must all still be represented: that ladder
+	// is the point of the module.
+	for level := 1; level <= 5; level++ {
+		if !stages[level] {
+			t.Errorf("scheduling module has no stage %d exercise", level)
 		}
 	}
-	contextual := module.Labs[4]
+
+	contextual, _ := cur.LabByID("scheduling-pending")
+	if contextual == nil {
+		t.Fatal("no scheduling-pending exercise")
+	}
 	if contextual.Variants == nil || len(contextual.Variants.Options) != 2 {
 		t.Fatalf("contextual variants = %#v, want selector and taint", contextual.Variants)
 	}
@@ -110,7 +142,10 @@ func TestSchedulingModuleIsAnOrderedFiveStagePath(t *testing.T) {
 	}
 }
 
-func TestExpandedCurriculumHasFortyEightBuildableExercises(t *testing.T) {
+// TestCurriculumHasTheExpectedBuildableExercises is a deliberate snapshot: it
+// has to be edited in the same commit as any new exercise, which is what stops
+// content from being added without also being counted and dogfooded.
+func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 	src, err := content.Resolve("../..", "")
 	if err != nil {
 		t.Fatalf("content: %v", err)
@@ -122,14 +157,16 @@ func TestExpandedCurriculumHasFortyEightBuildableExercises(t *testing.T) {
 
 	wantByModule := map[string]int{
 		"workloads":            10,
-		"scheduling":           5,
+		"scheduling":           7,
 		"rbac":                 5,
 		"services":             7,
 		"dns-networking":       3,
 		"network-policy":       5,
-		"storage":              5,
+		"storage":              6,
+		"admission":            3,
 		"control-plane":        3,
 		"packaging-extensions": 3,
+		"observability":        2,
 		"troubleshooting":      2,
 	}
 	total := 0
@@ -155,7 +192,10 @@ func TestExpandedCurriculumHasFortyEightBuildableExercises(t *testing.T) {
 			}
 		}
 	}
-	if total != 48 {
-		t.Errorf("curriculum has %d exercises, want 48", total)
+	if want := 56; total != want {
+		t.Errorf("curriculum has %d exercises, want %d", total, want)
+	}
+	if got := cur.LabCount(); got != total {
+		t.Errorf("%d exercises are reachable through modules, but the curriculum holds %d", total, got)
 	}
 }

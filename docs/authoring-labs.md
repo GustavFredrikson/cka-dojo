@@ -57,6 +57,24 @@ patch are all correct, and the exam scores them all the same.
 how to undo itself. `nodeExec` requires you to supply the `undo` script, and
 validation rejects it if you do not.
 
+Reset is `Teardown` + `Setup`: it repairs faults and deletes the objects in
+`setup.apply`, then applies them again. Two consequences bite in practice, and
+neither is caught by `content validate` — only by running the loop at the
+bottom of this page.
+
+*Cluster-scoped objects the learner creates survive reset.* Deleting the lab's
+namespace sweeps up everything inside it, but a PersistentVolume, a
+StorageClass or a ClusterRole is not in any namespace and is not in your
+manifests either. The lab then still passes immediately after a reset, which
+silently hands out a free pass. Ship such objects in the baseline in a state
+that fails grading, so the engine owns them and reset restores the failure.
+
+*`waitReady` runs after every manifest is applied, not between them.* If two
+workloads in one baseline compete for the same nodes, whichever the scheduler
+reaches first wins and the symptom can invert from run to run. When a lab
+depends on one workload settling before another appears, put the second one in
+a `kubernetesApply` fault: faults land after `waitReady`.
+
 ## lab.yaml
 
 ```yaml

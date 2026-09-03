@@ -67,6 +67,14 @@ skills:
     name: Node selectors
   - id: scheduler-diagnostics
     name: Scheduler diagnostics
+  - id: affinity
+    name: Node and Pod affinity
+  - id: topology-spread
+    name: Topology spread constraints
+  - id: resource-quotas
+    name: ResourceQuota
+  - id: limit-ranges
+    name: LimitRange
   - id: services
     name: Services
   - id: selectors
@@ -105,6 +113,10 @@ skills:
     name: StorageClasses
   - id: storage-binding
     name: Volume binding
+  - id: reclaim-policies
+    name: Reclaim policies
+  - id: dynamic-provisioning
+    name: Dynamic volume provisioning
   - id: kubelet
     name: kubelet
   - id: containerd
@@ -134,6 +146,8 @@ modules:
   - 06-dns-networking
   - 07-network-policy
   - 09-storage
+  - 10-admission
   - 12-control-plane
   - 13-packaging-extensions
+  - 14-observability
   - 15-troubleshooting

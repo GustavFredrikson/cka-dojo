@@ -3,7 +3,7 @@ id: troubleshooting-logs
 title: Diagnose a failing container from its output
 learningStage: diagnose
 domain: [troubleshooting]
-skills: [pod-logs, resource-observability, application-troubleshooting]
+skills: [pod-logs, application-troubleshooting]
 difficulty: 2
 targetMinutes: 6
 environment: {profile: standard}

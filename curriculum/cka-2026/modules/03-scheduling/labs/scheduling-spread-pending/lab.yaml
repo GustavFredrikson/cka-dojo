@@ -1,0 +1,42 @@
+schemaVersion: 1
+id: scheduling-spread-pending
+title: No replica will schedule anywhere
+learningStage: contextual-fix
+prerequisites: [scheduling-anti-affinity]
+domain: [workloads-scheduling, troubleshooting]
+skills: [affinity, topology-spread, scheduling, scheduler-diagnostics]
+difficulty: 3
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  # cache must own one Pod on each worker before checkout exists, or the two
+  # Deployments race for the nodes and the symptom inverts.
+  waitReady:
+    - {namespace: dojo-scheduling-spread-pending, kind: deployment, name: cache}
+  faults:
+    - {type: kubernetesApply, manifest: manifests/checkout.yaml}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-scheduling-spread-pending, name: checkout, minReplicas: 3}
+    - {type: deploymentAvailable, namespace: dojo-scheduling-spread-pending, name: cache, minReplicas: 2}
+    - type: command
+      description: the Pod template still expresses a placement preference
+      command: kubectl -n dojo-scheduling-spread-pending get deployment checkout -o jsonpath='{.spec.template.spec.affinity}{.spec.template.spec.topologySpreadConstraints}'
+      stdout: {matches: '\S'}
+hints:
+  - Nothing scheduled at all, so the Pod template is asking for a place that
+    does not exist. The nodes are fine; the requirement is not.
+  - Describe one of the Pending Pods and read the `FailedScheduling` event. It
+    gives a separate reason for each node it rejected.
+  - checkout carries a hard anti-affinity rule. Work out which Pods it is
+    refusing to sit beside, then find where those Pods are actually running —
+    `kubectl get pods -o wide --show-labels` shows both at once.
+  - "Relax the rule from a hard requirement to a preference: move the block
+    under `preferredDuringSchedulingIgnoredDuringExecution`, wrapping the term
+    in `podAffinityTerm` and adding a `weight`. Replacing it with a
+    `topologySpreadConstraints` entry using `maxSkew: 1` and
+    `whenUnsatisfiable: ScheduleAnyway` is equally valid. Edit with `kubectl -n
+    dojo-scheduling-spread-pending edit deployment checkout`."
+exam: {eligible: true}
+conflicts: [namespace:dojo-scheduling-spread-pending]

@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: storage-reclaim
+title: Keep the volume when the claim goes away
+learningStage: build
+prerequisites: [storage-build]
+domain: [storage]
+skills: [persistent-volumes, persistent-volume-claims, reclaim-policies, storage-binding]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+grading:
+  all:
+    - {type: objectExists, kind: pv, name: dojo-storage-reclaim}
+    - type: jsonPath
+      kind: pv
+      name: dojo-storage-reclaim
+      path: "{.spec.persistentVolumeReclaimPolicy}"
+      equals: Retain
+    - type: jsonPath
+      kind: pv
+      name: dojo-storage-reclaim
+      path: "{.status.phase}"
+      equals: Released
+    - {type: objectExists, kind: pvc, namespace: dojo-storage-reclaim, name: archive, absent: true}
+exam: {eligible: true}
+conflicts: [namespace:dojo-storage-reclaim, pv:dojo-storage-reclaim]

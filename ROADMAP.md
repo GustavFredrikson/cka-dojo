@@ -98,12 +98,33 @@ workloads 15, storage 10.
   destination failures
 - [x] Add an exam-realistic operations batch: HPA, probes, NodePort, DNS,
   static Pods, scheduler recovery, node drain, logs, Helm, Kustomize and CRDs
+- [x] Close the competency gaps found by auditing the content against the
+  published 2025-02-18 revision: `kubectl top` and resource-usage diagnosis
+  (`14-observability`), reclaim policies, ResourceQuota and LimitRange
+  (`10-admission`), Pod anti-affinity and topology spread
 - [ ] Add `dojo placement` once enough low-stage exercises exist to produce an
   honest per-skill result
 
-Current size: 48 dogfooded exercises across ten modules. Next curriculum slice:
-Ingress/Gateway and dynamic provisioning, followed by cluster lifecycle work
-that uses the special environments in milestone 5.
+Current size: 56 dogfooded exercises across twelve modules.
+
+**Known competency gaps, in priority order.** These are bullets in the
+published curriculum with no exercise behind them:
+
+1. Ingress controllers, Ingress resources and the Gateway API — nothing at
+   all; `08-ingress` is reserved for it. Needs an ingress controller and the
+   Gateway API CRDs as pinned environment addons.
+2. Dynamic volume provisioning — `09-storage` teaches static volumes only, and
+   says so in its lesson. Needs a provisioner (local-path) as an addon.
+3. LoadBalancer and ExternalName Service types.
+4. CoreDNS configuration: the DNS labs use CoreDNS but never repair it.
+5. kubeadm cluster creation, cluster lifecycle/upgrade and an HA control
+   plane — these wait on the milestone 5 and 7 environments.
+6. Extension interfaces (CNI/CSI/CRI) are mentioned but never exercised.
+
+Domain balance still leans away from the published weighting: cluster
+architecture is under-represented (about 19% of lab-domain tags against a 25%
+target) and workloads over-represented (about 23% against 15%). Closing gaps 1
+and 5 corrects both.
 
 ### Milestone 5 - special environments - `later`
 
@@ -188,6 +209,34 @@ exam UI.
 - The five-stage Services path passed live end to end. All three contextual
   Service variants failed before repair and passed after distinct state-based
   fixes; reset re-injected the selected fault.
+2026-09-03, macOS arm64, same cluster:
+
+- All eight new exercises passed the full loop live — start, grade fails for
+  the intended reason, hand-fix, grade passes, reset, grade fails again — on
+  Kubernetes 1.35.8. Both documented repair routes were exercised separately
+  for `quota-blocked` (declare resources / add a LimitRange plus a rollout
+  restart) and for `scheduling-spread-pending` (preferred anti-affinity /
+  topology spread).
+- Live running found and fixed two engine defects and two content defects:
+  - `deploymentAvailable` split two jsonpath values on whitespace. An absent
+    `.status.availableReplicas` renders as empty, so the *updated* count was
+    read as the *available* count: a Deployment with nothing running reported
+    "2 available, 0 updated" and pointed the learner at a rollout rather than
+    at the scheduler. Both this and `nodeReady` now use an explicit separator.
+  - `objectExists` and `jsonPath` printed "in default" for cluster-scoped
+    kinds, so a PersistentVolume check named a namespace it has nothing to do
+    with. The location is now omitted when the lab gives no namespace.
+  - `storage-reclaim` originally had the learner create the PersistentVolume.
+    Being cluster-scoped it survived teardown, so the lab passed instantly
+    after a reset. The volume now ships in the baseline with the `Delete`
+    policy.
+  - `scheduling-spread-pending` originally used self-anti-affinity. The rule
+    is symmetric, so healthy old Pods repelled the corrected ones and a
+    correct fix deadlocked the rollout under any `maxUnavailable` below 2 —
+    and pinning a strategy in the baseline did not help, because a learner who
+    re-applies a manifest prunes it. It now repels a separate `cache`
+    workload, applied through a `kubernetesApply` fault so that cache settles
+    on both workers before checkout exists.
 - The five-stage Scheduling path passed live end to end. Selector and taint
   variants both produced genuine Pending Pods, accepted distinct valid fixes,
   and reset correctly. Teardown removed every training namespace and restored

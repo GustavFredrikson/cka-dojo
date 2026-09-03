@@ -1,0 +1,38 @@
+schemaVersion: 1
+id: observability-top
+title: Read what the cluster is actually using
+learningStage: inspect
+domain: [troubleshooting]
+skills: [resource-observability, resource-management, kubectl-workflows]
+difficulty: 1
+targetMinutes: 6
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-observability-top, kind: deployment, name: grinder}
+    - {namespace: dojo-observability-top, kind: deployment, name: dozer}
+checkpoints:
+  - id: busiest
+    task: |
+      Which Deployment's Pod is actually consuming the most CPU right now?
+      Answer with the Deployment name.
+    answer: {accepted: [grinder], caseInsensitive: true}
+  - id: over-reserved
+    task: |
+      Which Deployment reserves the most CPU from the scheduler, regardless of
+      what it uses? Answer with the Deployment name.
+    answer: {accepted: [dozer], caseInsensitive: true}
+  - id: field
+    task: |
+      Which container field does the scheduler read when it decides whether a
+      Pod fits on a node — `requests` or `limits`?
+    answer: {accepted: [requests, resources.requests], caseInsensitive: true}
+grading:
+  all:
+    - type: command
+      description: the metrics API reports Pod usage for this namespace
+      command: kubectl -n dojo-observability-top top pods --no-headers
+      stdout: {contains: grinder}
+exam: {eligible: false}
+conflicts: [namespace:dojo-observability-top]

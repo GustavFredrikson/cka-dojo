@@ -1,0 +1,34 @@
+# checkout refuses to share a node with the cache tier. Every worker runs one,
+# so no replica can be placed.
+#
+# Applied as a fault rather than in the baseline so that it lands only after
+# cache is Ready on both workers. Created together, the two Deployments race:
+# if checkout is scheduled first it occupies a worker and — anti-affinity being
+# symmetric — blocks cache instead, producing the wrong symptom entirely.
+#
+# The repulsion deliberately points at *another* workload rather than at
+# checkout's own Pods. Self-anti-affinity would deadlock the repair: the rule
+# is symmetric, so healthy old Pods keep repelling the corrected ones, and the
+# rollout cannot retire them without dropping below maxUnavailable. Here every
+# checkout Pod is Pending and occupies no node, so a corrected template rolls
+# out cleanly whatever strategy is in force.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: checkout, namespace: dojo-scheduling-spread-pending}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {tier: cache}
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: checkout
+          image: nginx:1.27-alpine
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}

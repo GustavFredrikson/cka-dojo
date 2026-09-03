@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-observability-oversized-requests}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: reporting, namespace: dojo-observability-oversized-requests}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: reporting}}
+  template:
+    metadata: {labels: {app: reporting}}
+    spec:
+      containers:
+        - name: reporting
+          image: nginx:1.27-alpine
+          resources:
+            requests: {cpu: "3", memory: 64Mi}
+            limits: {cpu: "4", memory: 128Mi}

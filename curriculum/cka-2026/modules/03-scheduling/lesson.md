@@ -23,6 +23,19 @@ Node properties
 A selector attracts a Pod to matching nodes. A taint repels Pods; a matching
 toleration permits scheduling but does not attract the Pod to that node.
 
+Affinity rules come in two strengths, and the difference decides whether an
+unsatisfiable rule spreads your Pods or deadlocks them:
+
+| Form | Behaviour when nothing fits |
+|---|---|
+| `requiredDuringScheduling…` | the Pod stays Pending indefinitely |
+| `preferredDuringScheduling…` | the scheduler places it anyway |
+| `topologySpreadConstraints` + `DoNotSchedule` | Pending, like required |
+| `topologySpreadConstraints` + `ScheduleAnyway` | placed, like preferred |
+
+`topologyKey` names the node label that defines "the same place":
+`kubernetes.io/hostname` means per node.
+
 ## Objects involved
 
 - `Pod`: requests scheduling through selectors, affinity and tolerations.
@@ -65,6 +78,10 @@ Check claims, topology constraints and scheduler health
 
 ## Common CKA failure modes
 
+- Hard Pod anti-affinity keyed on hostname with more replicas than
+  schedulable nodes: the surplus replicas can never be placed.
+- The `preferred` affinity form is written with the `required` form's shape;
+  it needs a `weight` and a nested `podAffinityTerm`.
 - A `nodeSelector` value does not exist on any node.
 - A Pod is pinned to a tainted node without a matching toleration.
 - A toleration exists, but no selector attracts the Pod to the intended node.
@@ -94,7 +111,9 @@ stage at a time:
 ```bash
 dojo start scheduling-follow
 dojo start scheduling-build
+dojo start scheduling-anti-affinity
 dojo start scheduling-inspect
 dojo start scheduling-guided-toleration
 dojo start scheduling-pending
+dojo start scheduling-spread-pending
 ```

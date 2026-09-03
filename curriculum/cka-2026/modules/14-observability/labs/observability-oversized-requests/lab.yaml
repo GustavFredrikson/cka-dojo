@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: observability-oversized-requests
+title: A Deployment that never gets a node
+learningStage: contextual-fix
+prerequisites: [observability-top]
+domain: [troubleshooting, workloads-scheduling]
+skills: [resource-observability, resource-management, scheduling, deployments]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-observability-oversized-requests, name: reporting, minReplicas: 2}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-observability-oversized-requests
+      name: reporting
+      path: "{.spec.template.spec.containers[0].resources.requests.cpu}"
+hints:
+  - No replica was ever scheduled, so the answer is in the scheduling decision
+    rather than in the container.
+  - Describe one of the Pending Pods and read the Events the scheduler wrote.
+  - The scheduler compares a container's requested CPU against each node's
+    Allocatable CPU. Measured usage never enters that comparison, so an idle
+    cluster can still have no node that fits.
+  - "Compare `kubectl -n dojo-observability-oversized-requests get deploy
+    reporting -o jsonpath='{.spec.template.spec.containers[0].resources}'`
+    with `kubectl describe node worker1 | grep -A5 Allocatable`, then lower the
+    request with `kubectl -n dojo-observability-oversized-requests set
+    resources deployment/reporting --requests=cpu=100m,memory=64Mi
+    --limits=cpu=500m,memory=128Mi`."
+exam: {eligible: true}
+conflicts: [namespace:dojo-observability-oversized-requests]

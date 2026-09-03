@@ -9,6 +9,8 @@ domains:
 labs:
   - scheduling-follow
   - scheduling-build
+  - scheduling-anti-affinity
   - scheduling-inspect
   - scheduling-guided-toleration
   - scheduling-pending
+  - scheduling-spread-pending

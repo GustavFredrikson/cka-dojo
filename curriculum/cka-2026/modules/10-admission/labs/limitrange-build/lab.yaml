@@ -1,0 +1,42 @@
+schemaVersion: 1
+id: limitrange-build
+title: Give a namespace sensible defaults
+learningStage: build
+prerequisites: [quota-build]
+domain: [workloads-scheduling]
+skills: [limit-ranges, resource-management, kubectl-workflows]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+grading:
+  all:
+    - {type: objectExists, kind: limitrange, namespace: dojo-limitrange-build, name: defaults}
+    - {type: podScheduled, namespace: dojo-limitrange-build, name: probe}
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-limitrange-build
+      name: probe
+      path: "{.spec.containers[0].resources.requests.cpu}"
+      equals: 100m
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-limitrange-build
+      name: probe
+      path: "{.spec.containers[0].resources.requests.memory}"
+      equals: 64Mi
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-limitrange-build
+      name: probe
+      path: "{.spec.containers[0].resources.limits.cpu}"
+      equals: 250m
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-limitrange-build
+      name: probe
+      path: "{.spec.containers[0].resources.limits.memory}"
+      equals: 128Mi
+exam: {eligible: true}
+conflicts: [namespace:dojo-limitrange-build]

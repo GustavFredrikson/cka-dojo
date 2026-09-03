@@ -1,0 +1,10 @@
+id: 10-admission
+name: Pod admission
+summary: >-
+  Namespace-level guardrails: ResourceQuota caps what a team may consume,
+  LimitRange supplies the numbers individual Pods forget to declare.
+domains: [workloads-scheduling, troubleshooting]
+labs:
+  - quota-build
+  - limitrange-build
+  - quota-blocked

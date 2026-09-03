@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: quota-blocked
+title: A Deployment with no Pods at all
+learningStage: contextual-fix
+prerequisites: [quota-build, limitrange-build]
+domain: [workloads-scheduling, troubleshooting]
+skills: [resource-quotas, limit-ranges, resource-management, deployments, application-troubleshooting]
+difficulty: 3
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/broken.yaml]
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-quota-blocked, name: worker, minReplicas: 2}
+    - {type: objectExists, kind: resourcequota, namespace: dojo-quota-blocked, name: team-quota}
+    - type: jsonPath
+      kind: resourcequota
+      namespace: dojo-quota-blocked
+      name: team-quota
+      path: "{.status.used.pods}"
+      equals: "2"
+hints:
+  - No Pod object was ever created. The failure happened at admission, before
+    the scheduler ever saw anything, so there is nothing to `describe pod`.
+  - A Deployment does not create Pods itself; its ReplicaSet does. Describe the
+    ReplicaSet and read the events it recorded.
+  - Once a ResourceQuota tracks a compute resource, every Pod in that namespace
+    must state a value for it. Compare what the quota tracks against what the
+    Pod template actually declares.
+  - "Either declare the values on the workload — `kubectl -n dojo-quota-blocked
+    set resources deployment/worker --requests=cpu=100m,memory=64Mi
+    --limits=cpu=200m,memory=128Mi` — or let the namespace supply them by
+    creating a LimitRange with `defaultRequest` and `default`, then restart the
+    rollout with `kubectl -n dojo-quota-blocked rollout restart deployment/worker`."
+exam: {eligible: true}
+conflicts: [namespace:dojo-quota-blocked]

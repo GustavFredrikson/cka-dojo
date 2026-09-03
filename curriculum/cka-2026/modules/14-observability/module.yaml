@@ -1,0 +1,9 @@
+id: 14-observability
+name: Observability
+summary: >-
+  Reading actual CPU and memory consumption from the metrics API, and telling
+  "the cluster is full" apart from "this workload asked for too much".
+domains: [troubleshooting, workloads-scheduling]
+labs:
+  - observability-top
+  - observability-oversized-requests

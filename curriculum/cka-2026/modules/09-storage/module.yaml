@@ -7,6 +7,7 @@ domains: [storage, troubleshooting]
 labs:
   - storage-follow
   - storage-build
+  - storage-reclaim
   - storage-inspect
   - storage-guided-pending
   - storage-pending
