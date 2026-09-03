@@ -5,7 +5,7 @@ agent or human picking this repo up should be able to read this file alone and
 know what exists, what is next, and which decisions are already settled.
 
 - Status legend: `done` / `in progress` / `next` / `later`
-- Last reviewed: 2026-08-25
+- Last reviewed: 2026-09-03
 
 ---
 
@@ -121,6 +121,10 @@ published curriculum with no exercise behind them:
    plane — these wait on the milestone 5 and 7 environments.
 6. Extension interfaces (CNI/CSI/CRI) are mentioned but never exercised.
 
+That list is ordered by curriculum bullet. Section 4.1 reorders the same
+ground by expected exam yield and adds etcd backup and restore, which is
+missing from it entirely and is not blocked on a new environment profile.
+
 Domain balance still leans away from the published weighting: cluster
 architecture is under-represented (about 19% of lab-domain tags against a 25%
 target) and workloads over-represented (about 23% against 15%). Closing gaps 1
@@ -138,18 +142,125 @@ Weighted task selection, `conflicts:` detection between labs, wall-clock
 120-minute timer persisted to disk (never tied to a running process), hidden
 grading until `dojo exam finish`, scoring report.
 
+Section 4.3 argues this should be taken **before** milestones 5 and 7 — it is
+the largest realism lever in the repo and the only one of the three that needs
+no new environment profile — and lists four further requirements.
+
 ### Milestone 7 - HA - `later`
 
 `ha` profile: cp1/cp2/cp3 + worker + an API endpoint, covering the
 "highly-available control plane" competency.
 
-## 4. Deliberate non-goals (v1)
+## 4. Exam realism
+
+Content audit, 2026-09-03. The question this section exists to answer: **if a
+learner masters everything currently in the dojo, are they ready to sit the
+exam?**
+
+Honest answer today: ready on Troubleshooting, Services and Networking,
+Storage and Workloads; exposed on Cluster Architecture; and never tested under
+time pressure. Per-task difficulty sits at roughly real-exam level and clearly
+below Killer.sh, for three separable reasons — what is covered, how tasks are
+shaped, and how they are delivered. One subsection each, plus a grading-fidelity
+defect found during the same audit.
+
+Ordering note: 4.1 outranks 4.2 and 4.3 combined. A topic that has never been
+practised scores zero however well it is presented.
+
+### 4.1 Content gaps that cost real marks - `next`
+
+The gap list in milestone 4 is organised by curriculum bullet. This one is
+organised by expected exam yield, and it opens with an item that list does not
+mention at all:
+
+- [ ] **etcd backup and restore.** Near-certain on the real exam, absent here,
+  and — unlike the rest of gap 5 — **not blocked on a new environment
+  profile**. cp1 already runs a stacked etcd with its client certificates on
+  disk. A lab needs a `nodeExec` fault and `nodeFile` plus `command` graders;
+  nothing new in the engine. Worth three variants: take a snapshot to a given
+  path; restore a supplied snapshot into a fresh `--data-dir` and repoint the
+  static Pod; diagnose a control plane that is down *because* a restore was
+  done wrongly. The highest-yield single lab the repo can add today.
+- [ ] Certificate and kubeconfig repair: an expired client certificate, a
+  kubeconfig pointing at the wrong server or carrying the wrong CA,
+  `kubeadm certs check-expiration`. Belongs in `12-control-plane`.
+- [ ] CoreDNS repair (existing gap 4). The DNS labs consume CoreDNS but never
+  break its Corefile or scale the Deployment to zero.
+- [ ] LoadBalancer and ExternalName Service types (existing gap 3).
+- [ ] Workload primitives with no exercise anywhere: DaemonSet (it appears only
+  as `--ignore-daemonsets` in `node-drain`), StatefulSet, Job and CronJob,
+  PriorityClass and preemption, init and sidecar containers, `kubectl debug`
+  and ephemeral containers.
+
+Closing these also corrects the domain balance milestone 4 flags: every bullet
+but the last tags `cluster-architecture` or `troubleshooting`.
+
+### 4.2 Task shape - exam-shaped, not concept-shaped - `next`
+
+Every current lab is atomic: one concept, one outcome, `targetMinutes` 5-12.
+Real exam questions bundle three or four actions, and Killer.sh bundles more
+while specifying less. A learner who has only ever done atomic tasks has never
+practised the thing that actually burns the clock — holding a multi-part
+requirement in their head while working.
+
+- [ ] Define a **composite** shape at the `exam` stage: two to four graded
+  outcomes spanning at least two skills, `targetMinutes` 12-18. The schema
+  already allows it (`grading.all` and `skills` are both lists); what is
+  missing is the editorial decision to write them. Buildable from parts that
+  already exist — create a Deployment *and* expose it *and* keep it inside an
+  existing ResourceQuota.
+- [ ] Require a context or namespace switch in `exam`-stage task text. Every
+  real question opens with one, and forgetting it is a common way to lose a
+  question that was otherwise answered correctly.
+- [ ] Stop restating hint content in the task. `workloads-exam-build` describes
+  "the standard hostname label" and then hands over `kubernetes.io/hostname` in
+  hint 2, so taking the hint costs a mastery flag and buys nothing. At the
+  `exam` stage a hint should be a real concession.
+- [ ] Reconsider `difficulty: 3` as the ceiling. Nothing in the repo is rated
+  above it, so the scale has no headroom for the composite labs above. Either
+  widen it to 5 or document 3 as "as hard as the exam gets".
+
+### 4.3 Exam conditions - promote milestone 6 ahead of 5 and 7
+
+Milestone 6 is recorded as `later`. It is the largest single realism lever in
+the repo and should be taken first: milestones 5 and 7 both need new
+environment profiles, and this needs no VM work at all. Killer.sh is hard
+mostly through *delivery* — a wall clock, no feedback, no hints — and none of
+that is content.
+
+Beyond the milestone 6 bullets already recorded:
+
+- [ ] Pass mark and a per-domain score report at `dojo exam finish`, so the
+  output answers "would I have passed" and "where did I lose it", not just
+  "12 of 17".
+- [ ] `dojo hint` and `dojo solution` refuse to run inside an exam session.
+- [ ] Flag-for-review and skip. Triage — spotting the question that will eat
+  fifteen minutes and coming back to it — is an examinable skill, and it
+  cannot be practised without the ability to defer.
+- [ ] Per-task elapsed time in the report, against each lab's `targetMinutes`.
+  The learner needs to know *which* tasks made them slow, not only that they
+  ran out.
+
+### 4.4 Grading fidelity - `next`
+
+- [ ] `jsonPath` compares rendered strings, so `equals: 64Mi` rejects
+  `65536Ki` and `equals: 250m` rejects `0.25`. Those describe identical
+  cluster state, and rejecting them contradicts settled decision 4. The grader
+  should compare quantities as quantities whenever both sides parse as one.
+  Ten assertions are affected today, across `workloads-build`,
+  `workloads-exam-build` and `limitrange-build`.
+- [ ] While there: an `equalsAny` form, for the cases where several literal
+  spellings are correct and quantity parsing does not apply.
+
+---
+
+## 5. Deliberate non-goals (v1)
 
 Browser UI, SaaS/hosted mode, user accounts, cloud clusters, third-party lab
 plugins, MCP/AI integration, gamification, non-macOS hosts, replicating the PSI
 exam UI.
 
-## 5. Settled design decisions
+## 6. Settled design decisions
 
 1. **Go, not shell.** Shell only runs *inside* guests (provisioning, faults).
 2. **Separate `terminal` VM.** The learner never shells in from a cluster node,
@@ -172,7 +283,7 @@ exam UI.
 9. **Content is embedded but overridable** via `DOJO_CONTENT` / `--content`, so
    a colleague needs one binary while we develop against the repo.
 
-## 6. Known gaps / risks
+## 7. Known gaps / risks
 
 - Only macOS/arm64 + Lima is exercised. Nothing else is claimed to work.
 - Soft reset cannot undo arbitrary learner damage (e.g. `kubectl delete ns
@@ -184,7 +295,7 @@ exam UI.
   VM, so provisioning regressions are only caught by running `dojo setup`
   locally. An integration job that builds a real cluster is still unwritten.
 
-## 7. Verification log
+## 8. Verification log
 
 2026-08-25, macOS arm64, Lima 2.2.0:
 
