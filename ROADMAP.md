@@ -5,7 +5,7 @@ agent or human picking this repo up should be able to read this file alone and
 know what exists, what is next, and which decisions are already settled.
 
 - Status legend: `done` / `in progress` / `next` / `later`
-- Last reviewed: 2026-09-03
+- Last reviewed: 2026-09-04
 
 ---
 
@@ -232,7 +232,7 @@ Beyond the milestone 6 bullets already recorded:
 - [ ] Pass mark and a per-domain score report at `dojo exam finish`, so the
   output answers "would I have passed" and "where did I lose it", not just
   "12 of 17".
-- [ ] `dojo hint` and `dojo solution` refuse to run inside an exam session.
+- [x] `dojo hint` and `dojo solution` refuse to run inside an exam session.
 - [ ] Flag-for-review and skip. Triage — spotting the question that will eat
   fifteen minutes and coming back to it — is an examinable skill, and it
   cannot be practised without the ability to defer.
