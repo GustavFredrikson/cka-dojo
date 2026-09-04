@@ -389,82 +389,84 @@ exam UI.
      overwritten; move anything worth keeping into sections 1-8. -->
 
 <!-- BEGIN AUTOREVIEW -->
-_Last run: 2026-09-03._
+_Last run: 2026-09-04._
 
-§4 is the exam-realism assessment; nothing here restates it. Below is engine
-behaviour §4 does not reach, plus measurements that sharpen its claims.
+§4 is the hand-written exam-realism assessment; nothing here restates it. No Go
+or curriculum file has changed since the previous run, so 4-6 carry forward
+re-verified against the tree; 1-3 are new.
 
-### Defects, most valuable first
+### New this run
 
-1. **`--mode exam` is a trap.** `dojo start <lab> --mode exam` is accepted
-   (`cli/lab.go:266`), then `grade` (`:447`), `check` (`:362`), `hint`
-   (`:556`) and `solution` (`:595`) all refuse, pointing at `dojo exam
-   finish` — which `cli/root.go:42-63` never registers, so the lab can only
-   be abandoned. `--mode` is an unvalidated cast (`config.Mode(mode)`,
-   `:249`), so `--mode guided` and `--mode typo` are equally accepted and
-   equally inert: `ModeGuided` (`config/config.go:37`) is compared nowhere.
-   Until milestone 6 lands, reject anything but `practice` at parse time.
-   Note also that §4.3 lists the hint/solution exam refusal as still to do;
-   `:556` and `:595` already do it. The gap is the missing `exam` command.
-2. **`dojo reset` grants mastery for re-solving what you just solved.**
-   `newResetCmd` (`cli/lab.go:633-635`) clears `State.Passed` but never
-   calls `progress.StartAttempt`, so the next `grade` sees `firstPass` again
-   and increments `Passes` (`progress/progress.go:205`) — against the *same
-   seed and variant*, the plan being rebuilt from unchanged state. Pass →
-   reset → pass is `Passes: 2, Attempts: 1` and mastered, from one
-   `dojo start`, contradicting `progress.go:177` ("an attempt is one
-   `dojo start`, not one `dojo grade`") and the milestone 3 rule. Those same
-   three lines leave `HintsUsed` and `SolutionRead` set, so the honest use
-   of reset — start over, earn a clean pass — cannot succeed. Fix together.
-3. **`conflicts:` is one-sided, so milestone 6 will mis-pair labs.** All 62
-   labs declare it, and labs that *mutate* a node say what they mutate
-   (`worker2.taints`, three scheduling labs); labs that *depend on* a
-   pristine node say nothing. `node-drain` grades worker1 cordoned
-   (`nodeReady ... schedulable: false`), `scheduling-anti-affinity` grades
-   two replicas on two distinct nodes, `scheduling-spread-pending` needs
-   `cache` on both workers — all three exam-eligible, the latter two
-   declaring only `namespace:`. Paired in a generated exam, the question is
-   unanswerable. `content validate` cannot catch it: `conflicts` is a
-   free-form `[]string` (`lab/lab.go:132`) with no vocabulary and no
-   validation, unlike prerequisites, which are existence- and cycle-checked
-   (`curriculum/curriculum.go:326-350`). Add node tokens to the dependent
-   labs, or a positive `requires:` axis — metadata, not engine work.
+1. **A negative assertion passes when it was never actually answered.**
+   `AuthCanI.Check` (`grader/kubernetes.go:436-450`) never reads `res.ExitCode`,
+   although the comment on `:444` says `auth can-i` "mirrors it in the exit
+   code": anything whose stdout does not begin with `yes` is scored as a denial.
+   `KubectlRaw` folds a non-zero exit into `ExitCode` and returns a **nil**
+   error (`environment/kube.go:45-49`), so a check kubectl could not answer at
+   all — API server unreachable, a resource string it does not know — is
+   indistinguishable from a real "no" and prints green. That is all 11
+   `expect: false` assertions, across the five RBAC labs. `ObjectExists`
+   (`:147`) and `JSONPath` (`:241`) branch on the exit code first; this should
+   too. Same class: `Command.Check` (`grader/node.go:267`) discards the exec
+   error, so a failed exec's zero-value `ExecResult` meets the default
+   `exitCode: 0` (`provider/lima/lima.go:353-354`).
+2. **`dojo status` prints the variant, which is the answer.** `cli/lab.go:715-717`
+   adds a `variant` row, and the ids name the fault — `capacity-mismatch`,
+   `untolerated-taint`, `bad-image`, `missing-config`, `kubelet-stopped`.
+   Seven labs randomise over these so the learner has to diagnose, and `status`
+   is the command they run mid-lab to check the clock. The repo treats this as a
+   spoiler everywhere else: `--variant`'s help says "spoils the surprise"
+   (`:265`), and milestone 3 keeps variant and seed out of `tutor-context`
+   behind a tested allow-list. Drop the row unless the variant was forced.
+3. **`dojo recommend` steers away from the lab you just failed.**
+   `recommend.go:35-36` claims the mastery gap "prioritises a failed attempt
+   above a brand-new lab". At equal weight and stage it does not, once recency
+   multiplies through: failed today scores `1.25 x 0.75 = 0.94` (`gapFor:119`,
+   `recencyFor:139`), never attempted `1.0 x 1.25 = 1.25`. A failure needs
+   **seven days** to outrank untouched content; fix the comment or the curve.
 
-### Measurements
+### Still open, re-verified
 
-- **The exam-eligible pool would produce a soft mock exam.** 38 of 62 labs
-  are eligible, totalling 299 target minutes, so a 120-minute paper draws
-  ~15. Stage mix: 16 `build`, 14 `contextual-fix`, 5 `exam`, 3 `diagnose`;
-  28 of the 38 sit at difficulty 2, so the first generated exam would be
-  ~40% tutorial-stage build tasks. §4.2's composite labs are the real fix;
-  narrowing eligibility to `contextual-fix`/`diagnose`/`exam` is the cheap one.
-- **Domain balance is off on both sides.** §4 records the
-  cluster-architecture shortfall (13 labs, 15.1% against 25%). Unrecorded:
-  workloads-scheduling is 22 labs, 25.6% against 15% — a larger absolute
-  error than the shortfall it mirrors. Troubleshooting 24 (27.9 vs 30),
-  services-networking 20 (23.3 vs 20), storage 7 (8.1 vs 10) are close.
+4. **`--mode exam` is a trap.** `--mode` is an unvalidated cast
+   (`cli/lab.go:249`), so `exam` is accepted at `:266` and then `grade` (`:447`),
+   `check` (`:362`), `hint` (`:556`) and `solution` (`:595`) all refuse, pointing
+   at a `dojo exam finish` that `cli/root.go:42-63` never registers — the lab can
+   only be abandoned. Until milestone 6, reject anything but `practice`.
+5. **`dojo reset` grants mastery for re-solving what you just solved.**
+   `cli/lab.go:633-635` clears `State.Passed` without calling
+   `progress.StartAttempt`, so the next `grade` counts `firstPass` again
+   (`progress/progress.go:205`) against the same seed and variant: pass →
+   reset → pass is `Passes: 2, Attempts: 1` and mastered from one `dojo start`.
+   Those lines also leave `HintsUsed` set, so reset cannot earn a clean pass.
+6. **`conflicts:` is one-sided, so milestone 6 will mis-pair labs.** Labs that
+   mutate a node say so; labs needing a pristine one do not —
+   `scheduling-anti-affinity` needs two distinct nodes and
+   `scheduling-spread-pending` needs `cache` on both workers, both exam-eligible
+   and declaring only `namespace:`, while `node-drain` leaves worker1 cordoned.
+   `conflicts` is a free-form `[]string` (`lab/lab.go:132`) with no vocabulary,
+   so `content validate` cannot catch it, unlike prerequisites
+   (`curriculum.go:326-350`).
+
+### Measured today
+
+- 38 of 62 labs are exam-eligible, 299 target minutes: a 120-minute paper draws
+  ~15, 28 of them at difficulty 2. §4 notes cluster-architecture's shortfall
+  (13 tags, 15.1% vs 25%); unrecorded: workloads-scheduling is 22, 25.6% vs 15%.
 
 ### Remove or clean up
 
-- **Three fault primitives have no content behind them, and two are exactly
-  the §4.1 gaps.** `fileReplace`, `kubernetesDelete` and `kubernetesScale`
-  are registered (`fault/kubernetes.go:13-16`, `fault/node.go:13-15`),
-  documented (`docs/authoring-labs.md:193-204`) and used by no lab.
-  `fileReplace` backs up the original so repair restores it — that is
-  §4.1's CoreDNS Corefile and kubeconfig/certificate repairs;
-  `kubernetesScale` is "scale CoreDNS to zero". Engine cost for those two
-  §4.1 items is nil, and the labs are the only way these primitives get
-  exercised at all.
+- **Three fault primitives have no content behind them, and two are exactly the
+  §4.1 gaps.** `fileReplace`, `kubernetesDelete` and `kubernetesScale` are
+  registered (`fault/kubernetes.go:13-16`, `fault/node.go:13-15`), documented
+  (`docs/authoring-labs.md:193-204`) and used by no lab — yet `fileReplace`
+  restores originals on repair (§4.1's Corefile and kubeconfig work) and
+  `kubernetesScale` is "scale CoreDNS to zero".
 - `grading.any` is supported end to end (`lab.go:238`, `runner.go:187`,
-  "At least one of" in `cli/lab.go:521`) and used by no lab. Use or drop.
-- `README.md:80` says 48 exercises; there are 62. That sentence also omits
-  Ingress/Gateway API, admission and observability, and `README.md:108`
-  still describes the cluster as "Calico, metrics-server" without the four
-  addons pinned in §2. All of it landed in the last two commits.
+  `cli/lab.go:521`) and used by no lab. Use or drop.
+- `README.md:80` says 48 exercises; `content validate` reports 62, and omits
+  Ingress/Gateway API, admission and observability. `README.md:106-107` still
+  calls the cluster "Calico, metrics-server" without §2's four addons.
 
-**Already good, do not "fix":** grader `Describe()` names kind, name and
-namespace, and `in()` (`grader/kubernetes.go:102`) drops it for cluster-scoped
-kinds, so a failed check is unambiguous about what it looked at. `content
-validate` catches unknown types, missing manifests, undeclared skills and
-prerequisite cycles offline.
+**Already good:** every grader's `Describe()` names kind, name and namespace,
+and `in()` (`grader/kubernetes.go:102`) omits it for cluster-scoped kinds.
 <!-- END AUTOREVIEW -->
