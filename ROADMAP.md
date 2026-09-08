@@ -5,7 +5,7 @@ agent or human picking this repo up should be able to read this file alone and
 know what exists, what is next, and which decisions are already settled.
 
 - Status legend: `done` / `in progress` / `next` / `later`
-- Last reviewed: 2026-09-03
+- Last reviewed: 2026-09-08
 
 ---
 
@@ -300,7 +300,7 @@ Beyond the milestone 6 bullets already recorded:
 - [ ] Pass mark and a per-domain score report at `dojo exam finish`, so the
   output answers "would I have passed" and "where did I lose it", not just
   "12 of 17".
-- [ ] `dojo hint` and `dojo solution` refuse to run inside an exam session.
+- [x] `dojo hint` and `dojo solution` refuse to run inside an exam session.
 - [ ] Flag-for-review and skip. Triage — spotting the question that will eat
   fifteen minutes and coming back to it — is an examinable skill, and it
   cannot be practised without the ability to defer.
@@ -717,3 +717,93 @@ into `kubectl logs -c log-shipper`.
 One cleanup found while resetting: `rbac-csr` removed the key material it
 tells the learner to create but not the `ca.crt` copied off the control plane,
 so teardown left a file behind. Now removed with the rest.
+
+---
+
+## 9. Automated review
+
+<!-- Rewritten daily by the cka-dojo review routine. Hand edits here will be
+     overwritten; move anything worth keeping into sections 1-8. -->
+
+<!-- BEGIN AUTOREVIEW -->
+_Last run: 2026-09-07._
+
+§4 holds the hand-written exam-realism assessment; nothing here restates it. No
+Go or curriculum file has changed since 2026-09-03, so carried items were
+re-verified, not re-derived. 2 and 4 are new.
+
+1. **A negative RBAC assertion passes when it was never answered.**
+   `AuthCanI.Check` (`grader/kubernetes.go:436-450`) ignores `res.ExitCode`
+   despite the comment on `:444`, and `KubectlRaw` returns a **nil** error on a
+   non-zero exit (`environment/kube.go:33-53`). A check kubectl could not answer
+   yields empty stdout, reads as an implicit "no" and prints green — on all 11
+   `expect: false` assertions across five RBAC labs. `ObjectExists` (`:147`)
+   gets this right.
+2. **`--seed` is decoration on 55 of the 62 labs, and mastery pays for it.**
+   (new) `PickVariant` (`lab/lab.go:170-178`) is the seed's only consumer, and
+   only seven labs declare `variants:` (18 options between them, all at the
+   contextual-fix and diagnose stages). Elsewhere the scenario is identical every
+   run — yet `printTask` (`cli/lab.go:286`) prints `seed %d` on every lab and
+   `dojo progress --by-lab` closes by advertising replay by seed
+   (`cli/progress.go:138`). Mastery needs two passes (`progress/progress.go:43`),
+   so on 89% of the content the qualifying second pass replays what the learner
+   can now answer from memory — the opposite of what
+   `services-no-endpoints/lab.yaml:31` asks of a repeat ("train diagnosis, not
+   recall of which field was wrong last time"). The 55 include all 34 `build`,
+   `follow` and `inspect` labs, where templating one namespace or object name
+   per attempt would fix it.
+3. **`dojo start` narrates the fault it just injected.** `runner.go:54` emits
+   `injecting fault: <Describe()>` via `ui.Detail` — shown under `-v`
+   (`cli/root.go:32`) and always mirrored to `~/.cka-dojo/logs/dojo.log`
+   (`ui/ui.go:82-90`). Those strings are the answers: "stop and disable kubelet
+   on worker1" is all of `node-not-ready`, and "apply …/selector-pod.yaml" vs
+   "…/tainted-pod.yaml" names the `scheduling-pending` variant. Nine of the 17
+   fault-injecting labs are fix or diagnose; log the *type* there, not the text.
+4. **A failed `dojo start` orphans the scenario with no way back.** (new) `Setup`
+   (`lab/runner.go:34-59`) applies the baseline, waits on a three-minute rollout,
+   then injects faults; `cli/lab.go:237` returns on its error *before*
+   `config.SaveState` (`:255`). Objects and already-injected faults stay in the
+   cluster while `dojo status`, `stop` and `reset` all answer "no lab is running".
+   Worse when a lab was already active: `:227-234` tears the old one down without
+   clearing its state, so a later `dojo stop` cleans up the lab that is gone and
+   leaves the half-built one. A first-run image pull outlasting `waitReady` lands
+   here, and the error (`:238`) never names `dojo env reset`, the only exit.
+5. **Reading the worked answer is free; one hint is not.** `dojo solution` sets
+   `State.SolutionRead` (`cli/lab.go:603`); `RecordGrade` uses it only to withhold
+   `CleanPasses` (`progress/progress.go:207`), while `Mastered()` (`:43-45`) tests
+   `Passes >= 2 && LastPassHints == 0` and ignores it. Solution → grade → reset →
+   grade masters a lab off the answer; one hint does not.
+
+### Still open, unchanged — detail in the 2026-09-04 revision of this section
+
+- All five `exam`-stage labs ship three hints, though `lab/stage.go:52-55` says
+  that stage "deliberately provides none" and `lab/lab.go:303` never checks.
+  The exam pool is also mis-weighted: 38 eligible labs tag cluster-architecture
+  17.9% against a 25 target, troubleshooting 30.4% against 30. §4.1 closes that.
+- `httpService.ExpectStatus` (`grader/kubernetes.go:461`) reaches only
+  `Describe()`; `Check` (`:497`) passes on any wget exit 0, so the line printed
+  can promise 503 while the grader takes 200. 11 labs hand-write `wget` instead.
+- `--mode exam` is an unvalidated cast (`cli/lab.go:249`) into a mode whose exit,
+  `dojo exam finish`, `cli/root.go:42-63` never registers.
+- `dojo reset` (`:634`) clears `State.Passed` without a new `StartAttempt`, so
+  pass → reset → pass masters a lab on one attempt, with hints carried over.
+
+### Remove or clean up
+
+- **Three fault primitives have no content behind them, and two are §4.1 gaps.**
+  `fileReplace`, `kubernetesDelete` and `kubernetesScale` are registered
+  (`fault/kubernetes.go:13-16`, `fault/node.go:13-15`) and documented
+  (`docs/authoring-labs.md:193-204`) but used by no lab — yet `kubernetesScale`
+  *is* the CoreDNS gap, and `fileReplace` restores originals on repair.
+- Dead or half-built surface: `grading.any` (`lab/lab.go:238`) works and no lab
+  uses it; `conflicts:` (`:132`) is a free-form `[]string` with two grammars and
+  no validation; `SkillStat.Mastered()` (`progress/progress.go:229`) has no
+  caller, while `dojo progress` prints the "26 of 50" line its own help calls
+  useless (`cli/progress.go:20-24`, `:70`).
+- `README.md:80` says 48 exercises against `content validate`'s 62, omitting
+  Ingress/Gateway API, admission and observability; `:108` omits §2's four addons.
+- `go test ./...` is not hermetic: `TestStepsAreSkippedWhenAlreadyDone` drives
+  `Up()`, but `provision.go:255` shells out to `ssh-keygen` (red again today).
+
+**Already good:** every declared skill and every grader type is used by content.
+<!-- END AUTOREVIEW -->
