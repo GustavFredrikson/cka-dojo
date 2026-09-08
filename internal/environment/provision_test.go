@@ -112,3 +112,98 @@ func countScripts(prov *fake.Provider, substr string) int {
 	}
 	return n
 }
+
+func TestNodeIPArg(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		// The shape the provisioning script actually writes: one assignment,
+		// with the flag embedded in it rather than standing alone.
+		{"as provisioned", "KUBELET_EXTRA_ARGS=--node-ip=192.168.104.5\n", "192.168.104.5"},
+		{"quoted value", `KUBELET_EXTRA_ARGS="--node-ip=10.0.0.1"`, "10.0.0.1"},
+		{"further args after it", `KUBELET_EXTRA_ARGS="--node-ip=10.0.0.1 --v=2"`, "10.0.0.1"},
+		{"flag stands alone", "--node-ip=10.0.0.2", "10.0.0.2"},
+		{"other args only", "KUBELET_EXTRA_ARGS=--v=4\n", ""},
+		{"file absent", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := nodeIPArg(c.in); got != c.want {
+				t.Errorf("nodeIPArg(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestUpRefusesWhenANodeAddressMoved covers the guard added after a cluster was
+// found unrecoverable because cp1's address had changed underneath it. Without
+// the guard the symptom was a ten-minute wait in WaitReady and a timeout that
+// named nothing; the point of the check is that it fails at once and says what
+// to do.
+func TestUpRefusesWhenANodeAddressMoved(t *testing.T) {
+	t.Setenv("DOJO_HOME", t.TempDir())
+
+	prof := minimalProfile()
+	prov := fake.New()
+	// cp1 reports one address and insists, through its own kubelet defaults,
+	// that it was provisioned with another.
+	prov.Responder = func(node, script string) (provider.ExecResult, error) {
+		switch {
+		case strings.Contains(script, "ip -4 -o addr show"):
+			return provider.ExecResult{Stdout: "192.168.104.4\n"}, nil
+		case strings.Contains(script, "/etc/default/kubelet"):
+			return provider.ExecResult{Stdout: "KUBELET_EXTRA_ARGS=--node-ip=192.168.104.5\n"}, nil
+		case strings.Contains(script, "test -f"):
+			return provider.ExecResult{Stdout: "no\n"}, nil
+		}
+		return provider.ExecResult{}, nil
+	}
+	m := New(prof, prov, repoContent(t))
+
+	err := m.Up(context.Background(), false)
+	if err == nil {
+		t.Fatal("Up succeeded on an environment whose node addresses had moved")
+	}
+	for _, want := range []string{"cp1", "192.168.104.5", "192.168.104.4", "dojo env reset"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q:\n%v", want, err)
+		}
+	}
+	// It must refuse before touching the cluster, not after half-provisioning.
+	if prov.Ran("kubeadm init") {
+		t.Error("Up ran kubeadm init despite the address mismatch")
+	}
+}
+
+// TestVerifyNodeAddressesAcceptsAHealthyEnvironment is the other half of the
+// guard: it must be silent when the addresses agree, and on a freshly created
+// environment where no node has been provisioned yet and there is no recorded
+// address to compare against. Called directly rather than through Up, which
+// would drag the whole kubeadm bring-up in and test the fake, not the guard.
+func TestVerifyNodeAddressesAcceptsAHealthyEnvironment(t *testing.T) {
+	t.Setenv("DOJO_HOME", t.TempDir())
+
+	for _, tc := range []struct {
+		name, kubeletDefaults string
+	}{
+		{"addresses agree", "KUBELET_EXTRA_ARGS=--node-ip=192.168.104.4\n"},
+		{"never provisioned", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prov := fake.New()
+			prov.Responder = func(node, script string) (provider.ExecResult, error) {
+				switch {
+				case strings.Contains(script, "ip -4 -o addr show"):
+					return provider.ExecResult{Stdout: "192.168.104.4\n"}, nil
+				case strings.Contains(script, "/etc/default/kubelet"):
+					return provider.ExecResult{Stdout: tc.kubeletDefaults}, nil
+				}
+				return provider.ExecResult{}, nil
+			}
+			m := New(minimalProfile(), prov, repoContent(t))
+			if err := m.verifyNodeAddresses(context.Background()); err != nil {
+				t.Errorf("verifyNodeAddresses: %v", err)
+			}
+		})
+	}
+}

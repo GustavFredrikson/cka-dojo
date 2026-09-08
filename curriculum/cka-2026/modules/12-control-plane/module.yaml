@@ -1,10 +1,15 @@
 id: 12-control-plane
 name: Control plane and maintenance
 summary: >-
-  Static Pods, control-plane component recovery and safe worker maintenance on
-  a real kubeadm cluster.
+  Static Pods, control-plane component recovery, etcd backup and restore,
+  certificates and safe worker maintenance on a real kubeadm cluster.
 domains: [cluster-architecture, troubleshooting]
 labs:
   - controlplane-static-pod
   - controlplane-scheduler
+  - certs-expiration
+  - kubeconfig-repair
+  - etcd-snapshot
+  - etcd-restore
+  - etcd-unreachable
   - node-drain

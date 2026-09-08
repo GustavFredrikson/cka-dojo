@@ -1,0 +1,83 @@
+schemaVersion: 1
+id: rbac-csr
+title: Issue a client certificate for a new user
+learningStage: build
+prerequisites: [rbac-namespace-reader]
+domain: [cluster-architecture]
+skills: [certificate-signing-requests, certificates, kubeconfig, rbac, roles, rolebindings, authorization-checks]
+difficulty: 4
+targetMinutes: 18
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady: [{namespace: dojo-rbac-csr, kind: deployment, name: ledger}]
+  faults:
+    # A CertificateSigningRequest is cluster-scoped, so one the learner creates
+    # would outlive `dojo reset` and pass the next attempt for free. The lab
+    # owns removing it. Same for the key material on the workstation, so a
+    # reset starts from an empty directory rather than a half-finished attempt.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl delete csr dojo-auditor --ignore-not-found
+      undo: |
+        set -uo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl delete csr dojo-auditor --ignore-not-found
+    - type: nodeExec
+      node: terminal
+      script: |
+        set -euo pipefail
+        rm -f /home/student/auditor.key /home/student/auditor.csr \
+              /home/student/auditor.crt /home/student/auditor.kubeconfig \
+              /home/student/ca.crt
+      undo: |
+        set -uo pipefail
+        # ca.crt too: the solution has the learner copy it off the control
+        # plane, so reset should leave the home directory as it found it.
+        rm -f /home/student/auditor.key /home/student/auditor.csr \
+              /home/student/auditor.crt /home/student/auditor.kubeconfig \
+              /home/student/ca.crt
+grading:
+  all:
+    - type: jsonPath
+      kind: csr
+      name: dojo-auditor
+      path: '{.status.conditions[?(@.type=="Approved")].status}'
+      equals: "True"
+    - type: command
+      description: the CertificateSigningRequest has an issued certificate
+      command: |
+        test -n "$(kubectl get csr dojo-auditor -o jsonpath='{.status.certificate}')"
+    - type: command
+      target: terminal
+      description: the auditor kubeconfig authenticates as the intended identity
+      command: |
+        runuser -u student -- env HOME=/home/student \
+          kubectl --kubeconfig /home/student/auditor.kubeconfig auth whoami
+      stdout: {contains: dojo-auditor}
+    - type: command
+      target: terminal
+      description: that identity can list Pods in dojo-rbac-csr
+      command: |
+        runuser -u student -- env HOME=/home/student \
+          kubectl --kubeconfig /home/student/auditor.kubeconfig \
+          -n dojo-rbac-csr get pods -o name
+      stdout: {contains: pod/ledger}
+    - type: command
+      target: terminal
+      description: and is refused everything beyond reading Pods
+      command: |
+        set -e
+        cfg=/home/student/auditor.kubeconfig
+        run() { runuser -u student -- env HOME=/home/student \
+          kubectl --kubeconfig "$cfg" "$@"; }
+        test "$(run -n dojo-rbac-csr auth can-i delete pods)" = no
+        test "$(run -n dojo-rbac-csr auth can-i get secrets)" = no
+        test "$(run -n kube-system auth can-i get pods)" = no
+        echo "correctly scoped"
+      stdout: {contains: correctly scoped}
+exam: {eligible: true}
+conflicts: [namespace:dojo-rbac-csr, csr:dojo-auditor, terminal.path:/home/student/auditor.kubeconfig]

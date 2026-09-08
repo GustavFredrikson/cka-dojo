@@ -1,0 +1,16 @@
+# The object the snapshot exists to recover. Its value is deliberately opaque
+# and is not stated in the task: recreating the ConfigMap by hand cannot
+# reproduce it, so grading can only be satisfied by a real restore (or by
+# reading the value back out of the snapshot, which is the same skill).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dojo-etcd-restore
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ledger
+  namespace: dojo-etcd-restore
+data:
+  entries: af41c7d2-6b90-4e18-9f53-0c2ab7e6d115

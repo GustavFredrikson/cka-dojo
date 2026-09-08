@@ -75,6 +75,33 @@ reaches first wins and the symptom can invert from run to run. When a lab
 depends on one workload settling before another appears, put the second one in
 a `kubernetesApply` fault: faults land after `waitReady`.
 
+*`waitReady` is `kubectl rollout status`.* So it works for Deployments,
+StatefulSets and DaemonSets, and there is nothing for it to wait on for a bare
+Pod, a Job or a Service — `rollout status pod/x` is an error, not a wait. A lab
+whose baseline is a single Pod simply omits `waitReady`.
+
+## Two things about fault scripts
+
+*`nodeExec` scripts do not get `set -e`.* They run as `bash <file>` with stdin
+closed, so a command that fails in the middle is ignored and only the last
+exit code reaches the engine — a setup that half-worked reports success and
+hands the learner an unsolvable task. Start every `script:` with
+`set -euo pipefail`. Start every `undo:` with `set -uo pipefail` instead:
+teardown should keep going and clean up what it can.
+
+Stdin being closed is deliberate (a script read from stdin would have its tail
+swallowed by the first command that reads stdin). A heredoc *inside* the script
+is unaffected, so `kubectl apply -f - <<'EOF'` works normally.
+
+*An `undo` that restores a backup must not be able to enshrine a broken
+state.* `reset` is teardown followed by setup, so a `script:` that
+unconditionally copies the current file over its own backup will capture
+whatever the last attempt left behind. Either make the copy conditional on the
+current state being good, or reconstruct from a source of truth the learner
+cannot damage. `kubeconfig-repair` does the first — and puts the backup in a
+lab-level fault, so it is injected before whichever variant runs and repaired
+after it.
+
 ## lab.yaml
 
 ```yaml
@@ -248,6 +275,73 @@ line printed by `dojo grade` will leak the answer:
   command: kubeadm version -o short
   stdout:
     equals: v1.35.8
+```
+
+## Two traps in grading commands
+
+Both of these were found by running the labs, not by reading them, and both
+produce a `command` grader that passes when the cluster is broken.
+
+**Do not judge a DNS probe by its exit code.** busybox `nslookup` exits 0 on an
+empty `NOERROR` reply as well as on a real answer, and non-zero only on
+`NXDOMAIN`. Against deliberately broken cluster DNS it reported success for
+5 of 15 queries. Judge the answer instead:
+
+```yaml
+# wrong: passes about a third of the time on a cluster that resolves nothing
+command: kubectl -n NS exec deploy/probe -- nslookup web >/dev/null
+
+# right: a resolved name produces a `Name:` line
+command: |
+  kubectl -n NS exec deploy/probe -- nslookup web 2>/dev/null | grep -E '^Name:'
+```
+
+A reverse lookup prints `name = ` rather than `Name:`. The same caution
+applies to any CLI whose exit code reports "I got a reply" rather than "I got
+the reply you wanted" -- `etcdctl snapshot status` on etcd 3.6 prints usage and
+exits **zero** for a subcommand that no longer exists, which makes
+`a || fallback` silently capture help text.
+
+**A grader that tests a restricted identity must be given nowhere to fall
+back to.** `command` graders run as root on the control-plane node, which has
+an admin kubeconfig at `/root/.kube/config`. Unsetting `KUBECONFIG` is not
+enough — kubectl finds that file, authenticates as cluster-admin, and the
+check passes for any credential or none:
+
+```yaml
+# wrong: passes with an empty token, and with no ServiceAccount at all
+command: |
+  env -u KUBECONFIG kubectl --server=https://127.0.0.1:6443 \
+    --insecure-skip-tls-verify --token="$token" -n NS get pods
+
+# right: an empty kubeconfig leaves the token as the only way in
+command: |
+  env -u KUBECONFIG kubectl --kubeconfig=/dev/null \
+    --server=https://127.0.0.1:6443 --insecure-skip-tls-verify \
+    --token="$token" -n NS get pods
+```
+
+An explicit `--kubeconfig <file>` is authoritative and needs no such care. And
+assert a **negative** alongside the positive — something the restricted
+identity must *not* be able to do. A privilege check that only ever tests what
+should succeed cannot tell the intended identity from an admin fallback.
+
+**A fault must not return until its symptom is stable.** `kubectl rollout
+status` tells you the new Pods are available, not that they are all serving the
+new configuration. CoreDNS runs two replicas behind one Service, so after a
+Corefile change roughly half of all queries are answered correctly for a
+while: a fault that returned there handed the learner a working cluster that
+broke a minute into the attempt. Waiting for the *first* failed probe is not
+enough for the same reason. Wait for consecutive failures:
+
+```bash
+fails=0
+for i in $(seq 1 90); do
+  if probe; then fails=0; else
+    fails=$((fails + 1)); [ "$fails" -ge 5 ] && break
+  fi
+  sleep 2
+done
 ```
 
 ## Hints

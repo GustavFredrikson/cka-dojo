@@ -1,0 +1,62 @@
+schemaVersion: 1
+id: certs-expiration
+title: Read the cluster's certificates
+learningStage: inspect
+domain: [cluster-architecture]
+skills: [certificates, kubeconfig, control-plane-components]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup: {}
+checkpoints:
+  - id: subcommand
+    task: |
+      Which `kubeadm` subcommand lists every certificate's expiry date without
+      needing a working API server? Give the subcommand only, without `kubeadm`.
+    answer:
+      accepted: ["certs check-expiration", "certs check-expiration --config"]
+      caseInsensitive: true
+  - id: leaf-validity
+    task: |
+      Look at how long a freshly issued leaf certificate is valid for, in days.
+      Give the number.
+    answer: {accepted: ["365", "364"]}
+  - id: ca-validity
+    task: |
+      The certificate authorities are in a second block, issued for far longer.
+      Work out their *validity period* in whole years from the dates -- not the
+      RESIDUAL TIME the table prints, which is already a year short.
+    answer: {accepted: ["10", "10 years", "10y"], caseInsensitive: true}
+  - id: admin-cn
+    task: |
+      Decode the client certificate embedded in `/etc/kubernetes/admin.conf`
+      and read its subject. What is the Common Name (CN)?
+    answer: {accepted: ["kubernetes-admin"], caseInsensitive: true}
+  - id: admin-group
+    task: |
+      Which organisation (O) in that same subject is what actually grants it
+      cluster-admin, via a ClusterRoleBinding?
+    answer:
+      accepted: ["kubeadm:cluster-admins", "system:masters"]
+      caseInsensitive: true
+  - id: kubelet-rotation
+    task: |
+      One certificate on each node is not managed by `kubeadm certs` at all,
+      because the kubelet renews it itself. Which directory holds it?
+    answer:
+      accepted: ["/var/lib/kubelet/pki", "/var/lib/kubelet/pki/"]
+      caseInsensitive: true
+grading:
+  all:
+    - type: command
+      target: cp1
+      description: every kubeadm-managed certificate on cp1 is currently valid
+      command: kubeadm certs check-expiration
+      stdout: {contains: apiserver}
+    - type: command
+      target: cp1
+      description: no kubeadm-managed certificate has expired
+      command: |
+        ! kubeadm certs check-expiration | grep -qi 'invalid\|expired'
+exam: {eligible: false}
+conflicts: []

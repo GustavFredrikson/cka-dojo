@@ -1,0 +1,14 @@
+# A marker that must still be there afterwards. Grading checks it so that
+# "recover the cluster" cannot be satisfied by starting from a blank etcd.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dojo-etcd-unreachable
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intact
+  namespace: dojo-etcd-unreachable
+data:
+  entries: "this must survive"

@@ -15,7 +15,14 @@ grading:
     - {type: jsonPath, kind: deployment, namespace: dojo-dns-policy, name: dnscheck, path: "{.spec.template.spec.dnsPolicy}", equals: ClusterFirst}
     - type: command
       description: dnscheck resolves the Kubernetes API Service through cluster DNS
-      command: kubectl -n dojo-dns-policy exec deployment/dnscheck -- nslookup kubernetes.default.svc.cluster.local >/dev/null
+      # Not `nslookup ... >/dev/null` on its own: busybox nslookup exits 0 on an
+      # empty NOERROR reply as well as on a real answer, so the exit code says
+      # "resolved" for a share of queries against a broken cluster DNS. A
+      # resolved name produces a `Name:` line.
+      command: |
+        kubectl -n dojo-dns-policy exec deployment/dnscheck -- \
+          nslookup kubernetes.default.svc.cluster.local 2>/dev/null \
+          | grep -E '^Name:'
 hints:
   - Compare this Pod's `/etc/resolv.conf` with a normal cluster Pod.
   - The cluster itself is healthy; inspect the Pod spec's DNS policy.

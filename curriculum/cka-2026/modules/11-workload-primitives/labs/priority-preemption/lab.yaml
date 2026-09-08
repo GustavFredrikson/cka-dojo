@@ -1,0 +1,93 @@
+schemaVersion: 1
+id: priority-preemption
+title: Make room for the revenue path
+learningStage: exam
+prerequisites: [daemonset-build]
+masteryPrerequisites: [scheduling-pending]
+domain: [workloads-scheduling, cluster-architecture]
+skills: [pod-priority, preemption, scheduling, resource-management, deployments]
+difficulty: 4
+targetMinutes: 16
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  faults:
+    # A custom resource with a capacity this lab controls exactly. Filling the
+    # cluster with CPU or memory would depend on how much the platform addons
+    # happen to be requesting, and the symptom would drift from run to run;
+    # two slots on one node is two slots on one node.
+    #
+    # This is the mechanism a device plugin uses for GPUs, driven by hand:
+    # see the upstream "Advertise Extended Resources for a Node" task.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl patch node worker1 --subresource=status --type=json \
+          -p '[{"op":"add","path":"/status/capacity/dojo.cka~1slots","value":"2"}]'
+        kubectl -n dojo-priority apply -f - <<'MANIFEST'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: batch
+          namespace: dojo-priority
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: batch
+          template:
+            metadata:
+              labels:
+                app: batch
+            spec:
+              priorityClassName: dojo-batch
+              containers:
+                - name: batch
+                  image: busybox:1.36
+                  command: ["sleep", "3600"]
+                  resources:
+                    limits:
+                      dojo.cka/slots: "1"
+        MANIFEST
+        kubectl -n dojo-priority rollout status deployment/batch --timeout=180s
+      undo: |
+        set -uo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl -n dojo-priority delete deployment batch --ignore-not-found
+        kubectl patch node worker1 --subresource=status --type=json \
+          -p '[{"op":"remove","path":"/status/capacity/dojo.cka~1slots"}]' || true
+grading:
+  all:
+    - type: jsonPath
+      kind: priorityclass
+      name: dojo-critical
+      path: "{.value}"
+      equals: "100000"
+    - {type: deploymentAvailable, namespace: dojo-priority, name: payments, minReplicas: 1}
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-priority
+      name: payments
+      path: "{.spec.template.spec.priorityClassName}"
+      equals: dojo-critical
+    # The proof that preemption happened rather than there having been room
+    # all along: batch cannot still have both of its Pods.
+    - type: command
+      description: batch is untouched but no longer has both of its Pods running
+      command: |
+        desired=$(kubectl -n dojo-priority get deployment batch \
+          -o jsonpath='{.spec.replicas}')
+        ready=$(kubectl -n dojo-priority get deployment batch \
+          -o jsonpath='{.status.readyReplicas}')
+        echo "batch desired=${desired:-none} ready=${ready:-0}"
+        test "${desired:-none}" = 2
+        test "${ready:-0}" -lt 2
+      stdout: {contains: "batch desired=2"}
+exam: {eligible: true}
+conflicts:
+  - namespace:dojo-priority
+  - priorityclass:dojo-critical
+  - priorityclass:dojo-batch
+  - node:worker1

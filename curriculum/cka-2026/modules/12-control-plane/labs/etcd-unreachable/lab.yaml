@@ -1,0 +1,85 @@
+schemaVersion: 1
+id: etcd-unreachable
+title: The API server will not come up
+learningStage: diagnose
+prerequisites: [controlplane-scheduler]
+domain: [troubleshooting, cluster-architecture]
+skills: [etcd, control-plane-components, static-pods, node-troubleshooting]
+difficulty: 3
+targetMinutes: 14
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  faults:
+    # etcd is moved to a port nothing is looking for. etcd itself stays
+    # healthy -- its metrics endpoint and probes are on 2381 and untouched --
+    # so the component that fails is the API server, one hop away from the
+    # cause. No data is at risk, which is what makes this safe to reset.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        sed -i 's/:2379/:12379/g' /etc/kubernetes/manifests/etcd.yaml
+        for i in $(seq 1 60); do
+          crictl ps -q --name kube-apiserver | grep -q . || break
+          sleep 2
+        done
+      undo: |
+        set -uo pipefail
+        sed -i 's/:12379/:2379/g' /etc/kubernetes/manifests/etcd.yaml
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        for i in $(seq 1 90); do
+          kubectl get --raw=/readyz >/dev/null 2>&1 && break
+          sleep 2
+        done
+grading:
+  all:
+    - type: command
+      description: the API server is serving requests again
+      command: kubectl get --raw=/readyz
+      stdout: {contains: ok}
+    - type: command
+      description: etcd answers its own health check on the port the cluster expects
+      # Deliberately not `kubectl wait --for=condition=Ready -l component=etcd`.
+      # A mirror Pod's status is written by kubelet through the API server, so
+      # while the API server is down it goes stale, and it can still read
+      # Pending for minutes after etcd itself is serving perfectly. Ask etcd.
+      command: |
+        etcdctl \
+          --endpoints=https://127.0.0.1:2379 \
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+          --cert=/etc/kubernetes/pki/etcd/server.crt \
+          --key=/etc/kubernetes/pki/etcd/server.key \
+          endpoint health
+      stdout: {contains: is healthy}
+    - {type: objectExists, kind: namespace, name: dojo-etcd-unreachable}
+    - type: command
+      description: the cluster's existing data is intact
+      command: |
+        test "$(kubectl -n dojo-etcd-unreachable get configmap intact \
+          -o jsonpath='{.data.entries}')" = "this must survive"
+    - {type: nodeReady, node: worker1, ready: true}
+    - {type: nodeReady, node: worker2, ready: true}
+hints:
+  - Your kubeconfig is fine and the node is up. Something on the control plane
+    is not running, and `kubectl` is not going to be the tool that tells you
+    which.
+  - Static Pods leave containers behind even when the API server cannot list
+    them. Get onto cp1 and ask the container runtime directly.
+  - The component that is crashing is not the component that is misconfigured.
+    Read its logs, see what address it is failing to reach, and then find out
+    who is supposed to be listening there.
+  - |
+    On cp1:
+
+    ```
+    sudo crictl ps -a | grep -E 'apiserver|etcd'
+    sudo crictl logs <apiserver-container-id> 2>&1 | tail -30
+    sudo ss -ltnp | grep -E '2379|2380|2381'
+    sudo grep -n 'urls' /etc/kubernetes/manifests/etcd.yaml
+    sudo grep -n 'etcd-servers' /etc/kubernetes/manifests/kube-apiserver.yaml
+    ```
+
+    Nothing here needs a restore. Two files disagree about one number.
+exam: {eligible: true}
+conflicts: [namespace:dojo-etcd-unreachable, cluster.etcd, cluster.apiserver, cp1.manifest:etcd]

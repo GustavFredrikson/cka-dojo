@@ -1,0 +1,83 @@
+schemaVersion: 1
+id: etcd-restore
+title: Restore etcd from a snapshot
+learningStage: guided-fix
+prerequisites: [etcd-snapshot]
+domain: [cluster-architecture, troubleshooting]
+skills: [etcd, etcd-backup, static-pods, control-plane-components]
+difficulty: 3
+targetMinutes: 18
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  faults:
+    # Snapshot the cluster with the namespace present, then delete it. The only
+    # copy of the ConfigMap's contents is now inside the snapshot file.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        # Fail loudly here rather than leaving the learner with an
+        # impossible task: etcdctl arrives with etcd-tools.sh, which an
+        # environment provisioned before that script existed has not run.
+        command -v etcdctl >/dev/null || {
+          echo "etcdctl is missing on cp1; run \`dojo setup\` to provision it" >&2
+          exit 1
+        }
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        mkdir -p /opt/dojo
+        rm -f /opt/dojo/pre-incident.db
+        etcdctl \
+          --endpoints=https://127.0.0.1:2379 \
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+          --cert=/etc/kubernetes/pki/etcd/server.crt \
+          --key=/etc/kubernetes/pki/etcd/server.key \
+          snapshot save /opt/dojo/pre-incident.db
+        chmod 0644 /opt/dojo/pre-incident.db
+        kubectl delete namespace dojo-etcd-restore --wait=true
+      undo: |
+        set -uo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        # A restore may have only just finished; wait for the API server before
+        # touching it, or teardown races the control plane coming back up.
+        for i in $(seq 1 60); do
+          kubectl get --raw=/readyz >/dev/null 2>&1 && break
+          sleep 2
+        done
+        kubectl delete namespace dojo-etcd-restore --ignore-not-found --wait=true
+        rm -f /opt/dojo/pre-incident.db
+grading:
+  all:
+    - {type: objectExists, kind: namespace, name: dojo-etcd-restore}
+    - type: command
+      description: ConfigMap ledger is back, with the contents it had before the incident
+      command: |
+        test "$(kubectl -n dojo-etcd-restore get configmap ledger -o jsonpath='{.data.entries}')" \
+          = af41c7d2-6b90-4e18-9f53-0c2ab7e6d115
+    - type: command
+      description: the API server is serving requests again
+      command: kubectl get --raw=/readyz
+      stdout: {contains: ok}
+    - type: command
+      description: every node is Ready after the restore
+      command: kubectl wait --for=condition=Ready nodes --all --timeout=90s
+hints:
+  - A restore is an offline operation. Work out what has to stop before you
+    start, and what has to be told where the new data lives.
+  - Restoring writes a *new* data directory. It never writes into the one a
+    running etcd already owns.
+  - The etcd static Pod is the only thing that knows where its data directory
+    is. If you restore somewhere else, that manifest has to agree with you.
+  - |
+    The shape of it, on cp1:
+
+    ```
+    sudo etcdutl snapshot restore /opt/dojo/pre-incident.db \
+      --data-dir=/var/lib/etcd-restored
+    sudo vim /etc/kubernetes/manifests/etcd.yaml   # hostPath and --data-dir
+    ```
+
+    Move the manifest out of `/etc/kubernetes/manifests` first if you want
+    etcd stopped while you work, and move it back afterwards.
+exam: {eligible: true}
+conflicts: [namespace:dojo-etcd-restore, cluster.etcd, cp1.manifest:etcd]

@@ -1,0 +1,62 @@
+schemaVersion: 1
+id: jobs-build
+title: Run work once, and run it on a schedule
+learningStage: build
+domain: [workloads-scheduling]
+skills: [jobs, cronjobs, kubectl-workflows]
+difficulty: 2
+targetMinutes: 11
+environment: {profile: standard}
+setup: {apply: [manifests/namespace.yaml]}
+grading:
+  all:
+    - type: jsonPath
+      kind: job
+      namespace: dojo-jobs-build
+      name: migrate
+      path: "{.spec.completions}"
+      equals: "3"
+    - type: jsonPath
+      kind: job
+      namespace: dojo-jobs-build
+      name: migrate
+      path: "{.spec.parallelism}"
+      equals: "2"
+    - type: jsonPath
+      kind: job
+      namespace: dojo-jobs-build
+      name: migrate
+      path: "{.spec.backoffLimit}"
+      equals: "2"
+    - type: jsonPath
+      kind: job
+      namespace: dojo-jobs-build
+      name: migrate
+      path: "{.status.succeeded}"
+      equals: "3"
+    - type: jsonPath
+      kind: cronjob
+      namespace: dojo-jobs-build
+      name: report
+      path: "{.spec.schedule}"
+      equals: "*/5 * * * *"
+    - type: jsonPath
+      kind: cronjob
+      namespace: dojo-jobs-build
+      name: report
+      path: "{.spec.concurrencyPolicy}"
+      equals: Forbid
+    - type: jsonPath
+      kind: cronjob
+      namespace: dojo-jobs-build
+      name: report
+      path: "{.spec.successfulJobsHistoryLimit}"
+      equals: "1"
+    - type: jsonPath
+      kind: cronjob
+      namespace: dojo-jobs-build
+      name: report
+      path: "{.spec.suspend}"
+      equals: "true"
+exam: {eligible: true}
+conflicts: [namespace:dojo-jobs-build]

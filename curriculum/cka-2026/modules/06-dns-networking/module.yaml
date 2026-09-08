@@ -1,10 +1,12 @@
 id: 06-dns-networking
 name: DNS and Pod networking
 summary: >-
-  Kubernetes service discovery, cross-namespace names and Pod DNS policy,
-  practised as terminal-first operational tasks.
+  Kubernetes service discovery, cross-namespace names, Pod DNS policy and
+  repairing cluster DNS itself, practised as terminal-first operational tasks.
 domains: [services-networking, troubleshooting]
 labs:
   - dns-service-discovery
   - dns-cross-namespace
   - dns-policy
+  - coredns-down
+  - coredns-corefile

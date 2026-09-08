@@ -1,0 +1,39 @@
+schemaVersion: 1
+id: initcontainer-repair
+title: A rollout that never starts
+learningStage: guided-fix
+domain: [workloads-scheduling, troubleshooting]
+skills: [init-containers, deployments, services, dns, application-troubleshooting]
+difficulty: 2
+targetMinutes: 9
+environment: {profile: standard}
+setup: {apply: [manifests/broken.yaml]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-initcontainer, name: web, minReplicas: 2}
+    # The gate must still be in place. Deleting the init container is the
+    # obvious way to make the symptom go away and the wrong answer.
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-initcontainer
+      name: web
+      path: "{.spec.template.spec.initContainers[0].name}"
+      equals: wait-for-db
+    - {type: objectExists, kind: service, name: db, namespace: dojo-initcontainer}
+hints:
+  - The Pods are not failing. Look at which phase they are stuck in, and what
+    that phase means about the order things start in.
+  - '`kubectl logs` on these Pods talks to the wrong container. There is a flag
+    for choosing which one.'
+  - The init container is blocking on a name lookup. Work out what name, then
+    make that name resolve -- without changing the Pod.
+  - |
+    ```
+    kubectl -n dojo-initcontainer describe pod <pod> | head -30
+    kubectl -n dojo-initcontainer logs <pod> -c wait-for-db
+    ```
+
+    A ClusterIP Service has a DNS record from the moment it is created, whether
+    or not anything is behind it.
+exam: {eligible: true}
+conflicts: [namespace:dojo-initcontainer]

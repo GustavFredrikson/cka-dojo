@@ -8,3 +8,4 @@ labs:
   - quota-build
   - limitrange-build
   - quota-blocked
+  - psa-restricted

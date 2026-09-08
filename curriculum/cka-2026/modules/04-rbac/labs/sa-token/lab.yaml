@@ -1,0 +1,71 @@
+schemaVersion: 1
+id: sa-token
+title: Give a workload an identity
+learningStage: build
+prerequisites: [rbac-namespace-reader]
+domain: [cluster-architecture]
+skills: [serviceaccounts, serviceaccount-tokens, rbac, roles, rolebindings, authorization-checks]
+difficulty: 3
+targetMinutes: 13
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady: [{namespace: dojo-sa-token, kind: deployment, name: ledger}]
+grading:
+  all:
+    - {type: objectExists, kind: serviceaccount, name: reporter, namespace: dojo-sa-token}
+    - {type: authCanI, serviceAccount: reporter, namespace: dojo-sa-token, verb: list, resource: pods, expect: true}
+    - {type: authCanI, serviceAccount: reporter, namespace: dojo-sa-token, verb: delete, resource: pods, expect: false}
+    # The identity has to work, not merely exist: mint a token and use it.
+    - type: command
+      description: a token issued for the ServiceAccount authenticates and is scoped to it
+      # `--kubeconfig=/dev/null` is load-bearing. The control-plane node has an
+      # admin kubeconfig at /root/.kube/config, so merely unsetting KUBECONFIG
+      # leaves kubectl a credential to fall back on -- and the request is then
+      # made as cluster-admin, which passes whatever the token is. Pointing at
+      # an empty kubeconfig leaves the token as the only way in.
+      #
+      # The negative half is what proves the identity: an admin fallback would
+      # read Secrets happily, and this ServiceAccount must not.
+      command: |
+        set -e
+        token=$(kubectl -n dojo-sa-token create token reporter --duration=10m)
+        test -n "$token"
+        as_sa() {
+          env -u KUBECONFIG kubectl --kubeconfig=/dev/null \
+            --server=https://127.0.0.1:6443 --insecure-skip-tls-verify \
+            --token="$token" -n dojo-sa-token "$@"
+        }
+        as_sa get pods -o name
+        if as_sa get secrets >/dev/null 2>&1; then
+          echo "that token can read Secrets, so it is not scoped to the ServiceAccount"
+          exit 1
+        fi
+      stdout: {contains: pod/ledger}
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-sa-token
+      name: consumer
+      path: '{.spec.volumes[?(@.name=="api-token")].projected.sources[0].serviceAccountToken.audience}'
+      equals: dojo-metrics
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-sa-token
+      name: consumer
+      path: '{.spec.volumes[?(@.name=="api-token")].projected.sources[0].serviceAccountToken.expirationSeconds}'
+      equals: "3600"
+    - type: jsonPath
+      kind: pod
+      namespace: dojo-sa-token
+      name: consumer
+      path: "{.spec.serviceAccountName}"
+      equals: reporter
+    # A projected token is written by kubelet at the path you asked for. If the
+    # file is not there, the volume is declared and not mounted.
+    - type: command
+      description: the Pod has the projected token on disk at the required path
+      command: |
+        kubectl -n dojo-sa-token exec consumer -- \
+          test -s /var/run/secrets/dojo/token
+exam: {eligible: true}
+conflicts: [namespace:dojo-sa-token]

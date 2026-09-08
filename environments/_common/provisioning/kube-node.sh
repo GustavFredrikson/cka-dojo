@@ -37,6 +37,10 @@ curl -fsSL "https://pkgs.k8s.io/core:/stable:/v{{.K8sMinor}}/deb/Release.key" \
 chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{.K8sMinor}}/deb/ /" \
   > /etc/apt/sources.list.d/kubernetes.list
+# Redirection inherits the provisioning umask (077), and an apt list the
+# student cannot read makes Ubuntu's command-not-found handler print a
+# permission warning over every mistyped command.
+chmod 0644 /etc/apt/sources.list.d/docker.list /etc/apt/sources.list.d/kubernetes.list
 
 $APT update -qq
 $APT install -qq containerd.io
@@ -50,7 +54,14 @@ if [ -z "$PKG" ]; then
   exit 1
 fi
 $APT install -qq kubelet="$PKG" kubeadm="$PKG" kubectl="$PKG"
-apt-mark hold kubelet kubeadm kubectl containerd.io >/dev/null
+
+# crictl, from the same repo. Not optional: when the API server is down,
+# `crictl ps` and `crictl logs` are the only way to see what the control-plane
+# static Pods are doing, and several labs are built on exactly that. cri-tools
+# is versioned per minor rather than per patch, and this repo only carries the
+# v{{.K8sMinor}} line, so it needs no pin of its own.
+$APT install -qq cri-tools
+apt-mark hold kubelet kubeadm kubectl containerd.io cri-tools >/dev/null
 
 # containerd must use the systemd cgroup driver, like kubelet does.
 mkdir -p /etc/containerd
@@ -73,6 +84,7 @@ runtime-endpoint: unix:///run/containerd/containerd.sock
 image-endpoint: unix:///run/containerd/containerd.sock
 timeout: 10
 CRICTL
+crictl --version
 
 # Pin the node IP to this node's address on the environment network. Leaving
 # kubelet to choose means trusting whatever interface layout the provider

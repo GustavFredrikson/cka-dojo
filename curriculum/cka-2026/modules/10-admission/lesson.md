@@ -14,9 +14,25 @@ kubectl create Pod
    scheduler
 ```
 
-Both objects act *before* anything is scheduled, and both are namespaced. This
-is why a quota failure never produces a Pending Pod: the Pod is never created
-at all. The controller that wanted it keeps retrying, and the error is on the
+Pod Security Admission sits in the same place, and answers a different
+question — not "is there room" but "is this Pod allowed to be this
+privileged":
+
+```text
+kubectl create Pod
+      ↓
+  admission           ← Pod Security Admission checks the namespace's
+      ↓                 pod-security.kubernetes.io/enforce standard
+  admission           ← LimitRange fills in missing requests/limits
+      ↓
+  admission           ← ResourceQuota checks the namespace total
+      ↓
+   stored in etcd
+```
+
+All three act *before* anything is scheduled, and all three are namespaced.
+This is why a quota or policy failure never produces a Pending Pod: the Pod is
+never created at all. The controller that wanted it keeps retrying, and the error is on the
 ReplicaSet, not on a Pod you can describe.
 
 LimitRange writes; ResourceQuota rejects. Together they make a namespace safe
@@ -31,6 +47,9 @@ defaults, so the quota has something to count.
 - `LimitRange`: per-container `default` (limits), `defaultRequest`, plus `min`
   and `max` bounds enforced at admission.
 - `ReplicaSet`: where the rejection is reported when a Deployment is blocked.
+- Namespace labels `pod-security.kubernetes.io/enforce`, `/audit` and `/warn`:
+  Pod Security Admission is configured entirely by labels, with no object of
+  its own. Each takes a standard — `privileged`, `baseline` or `restricted`.
 
 ## Commands worth knowing
 
@@ -41,6 +60,8 @@ kubectl -n NAMESPACE get limitrange -o yaml
 kubectl -n NAMESPACE describe replicaset RS_NAME     # rejection events
 kubectl -n NAMESPACE get events --sort-by=.metadata.creationTimestamp
 kubectl create quota NAME --hard=pods=4,requests.cpu=1 -n NAMESPACE
+kubectl get ns NAMESPACE --show-labels
+kubectl label ns NAMESPACE pod-security.kubernetes.io/enforce=restricted
 ```
 
 ## Diagnostic workflow
@@ -56,6 +77,10 @@ Does the event say "exceeded quota"?
 Does it say "must specify requests.cpu" (or similar)?
   the quota constrains a resource the Pod does not declare
     → declare requests on the workload, or add a LimitRange with defaults
+Does it say 'violates PodSecurity "restricted:latest"'?
+  the namespace enforces a Pod Security Standard the Pod does not meet
+    → the message names every rule broken and the field that fixes it;
+      set those fields, do not relax the namespace label
 ```
 
 ## Common CKA failure modes
@@ -67,8 +92,17 @@ Does it say "must specify requests.cpu" (or similar)?
   are applied at creation, never retroactively.
 - A `limits` value below the matching `requests` value; the API server rejects
   the Pod outright.
-- Deleting the quota to make the symptom disappear, rather than fixing the
-  workload.
+- Deleting the quota, or relaxing `enforce` to `baseline`/`privileged`, to make
+  the symptom disappear rather than fixing the workload. Both remove the
+  control instead of meeting it.
+- Applying a Deployment into a `restricted` namespace, seeing it accepted, and
+  concluding the policy passed. A Deployment is not a Pod; `enforce` only ever
+  looks at Pods, so the rejection surfaces later on the ReplicaSet.
+- Putting `allowPrivilegeEscalation` or `capabilities` at Pod level. They are
+  container-only fields; `runAsNonRoot` and `seccompProfile` may sit at either.
+- Setting `runAsNonRoot: true` on an image that runs as uid 0 without also
+  setting `runAsUser`. The Pod is admitted and then fails to start with
+  `CreateContainerConfigError`.
 
 ## 5-minute walkthrough
 
@@ -84,4 +118,5 @@ shows fields you never typed.
 dojo start quota-build
 dojo start limitrange-build
 dojo start quota-blocked
+dojo start psa-restricted
 ```

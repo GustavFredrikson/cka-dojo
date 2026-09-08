@@ -68,6 +68,7 @@ dojo hint                  # a nudge, one level at a time, recorded
 dojo solution              # a worked answer
 dojo reset                 # rebuild this scenario
 dojo stop                  # end the lab and clean up
+dojo scrub                 # wipe your own aliases and files, start exam-fresh
 dojo tutor-context         # safe metadata to paste into an AI tutor
 dojo progress reset        # archive development history and start fresh
 ```
@@ -77,11 +78,19 @@ mastery gates can require two passes with the latest successful pass using no
 hints. Experienced learners can jump ahead explicitly with
 `dojo start <lab> --skip-prerequisites`.
 
-The current dogfooded curriculum contains 48 exercises across Workloads,
-Scheduling, RBAC, Services, DNS, NetworkPolicy, Storage, control-plane
-administration, Helm/Kustomize/CRDs and mixed troubleshooting. Most topics
-progress from following a known workflow through independent building and
-inspection to guided repair, contextual troubleshooting and exam-style tasks.
+The curriculum contains 81 exercises across Workloads, Scheduling, RBAC and
+identity, Services, DNS and CoreDNS, NetworkPolicy, Ingress and the Gateway
+API, Storage, Pod admission, the non-Deployment workload kinds, control-plane
+administration including etcd backup and restore, Helm/Kustomize/CRDs and
+operators, and mixed troubleshooting. Most topics progress from following a known workflow
+through independent building and inspection to guided repair, contextual
+troubleshooting and exam-style tasks.
+
+All 81 have been dogfooded on a live cluster: started, graded before the fix,
+fixed by hand, graded again, reset, and graded once more to confirm the
+scenario came back. `dojo readiness` also prints the published competencies
+with no exercise behind them at all, so a green readiness score is never
+mistaken for full coverage.
 
 Environment management:
 

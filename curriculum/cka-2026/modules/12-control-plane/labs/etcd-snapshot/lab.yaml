@@ -1,0 +1,61 @@
+schemaVersion: 1
+id: etcd-snapshot
+title: Back up etcd
+learningStage: build
+domain: [cluster-architecture]
+skills: [etcd, etcd-backup, static-pods, control-plane-components]
+difficulty: 2
+targetMinutes: 9
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  faults:
+    # Not a fault so much as a clean slate: reset must remove a snapshot taken
+    # on a previous attempt, or the lab would pass before it was started.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        # Fail loudly here rather than leaving the learner with an
+        # impossible task: etcdctl arrives with etcd-tools.sh, which an
+        # environment provisioned before that script existed has not run.
+        command -v etcdctl >/dev/null || {
+          echo "etcdctl is missing on cp1; run \`dojo setup\` to provision it" >&2
+          exit 1
+        }
+        mkdir -p /opt/dojo
+        rm -f /opt/dojo/etcd-snapshot.db
+      undo: |
+        set -uo pipefail
+        rm -f /opt/dojo/etcd-snapshot.db
+grading:
+  all:
+    - type: command
+      target: cp1
+      description: /opt/dojo/etcd-snapshot.db exists on cp1 and is not empty
+      command: test -s /opt/dojo/etcd-snapshot.db
+    - type: command
+      target: cp1
+      description: the file is a valid etcd snapshot holding this cluster's keys
+      command: |
+        # etcd 3.6 moved the offline snapshot subcommands into etcdutl. Do not
+        # try etcdctl as a fallback on a 3.6 client: `etcdctl snapshot status`
+        # there prints the `snapshot` usage text and exits *zero*, so a naive
+        # `a || b` chain captures help output and feeds it to jq. Pick the
+        # binary by what exists, and judge the result by whether it parses.
+        snap=/opt/dojo/etcd-snapshot.db
+        if command -v etcdutl >/dev/null 2>&1; then
+          status=$(etcdutl snapshot status "$snap" -w json 2>&1)
+        else
+          status=$(ETCDCTL_API=3 etcdctl snapshot status "$snap" -w json 2>&1)
+        fi
+        keys=$(printf '%s' "$status" | jq -r '.totalKey // empty' 2>/dev/null)
+        if [ -z "$keys" ]; then
+          echo "not a readable etcd snapshot: $(printf '%s' "$status" | head -1)"
+          exit 1
+        fi
+        echo "totalKey=$keys"
+        test "$keys" -gt 100
+      stdout: {contains: totalKey=}
+exam: {eligible: true}
+conflicts: [namespace:dojo-etcd-snapshot, cp1.path:/opt/dojo/etcd-snapshot.db]

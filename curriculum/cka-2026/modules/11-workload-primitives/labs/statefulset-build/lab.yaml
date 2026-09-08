@@ -1,0 +1,56 @@
+schemaVersion: 1
+id: statefulset-build
+title: A StatefulSet with per-Pod storage
+learningStage: build
+prerequisites: [storage-build]
+domain: [workloads-scheduling, storage]
+skills: [statefulsets, persistent-volume-claims, dynamic-provisioning, services, dns]
+difficulty: 3
+targetMinutes: 13
+environment: {profile: standard}
+setup: {apply: [manifests/baseline.yaml]}
+grading:
+  all:
+    - type: jsonPath
+      kind: service
+      namespace: dojo-statefulset-build
+      name: db
+      path: "{.spec.clusterIP}"
+      equals: None
+    - type: jsonPath
+      kind: statefulset
+      namespace: dojo-statefulset-build
+      name: db
+      path: "{.spec.serviceName}"
+      equals: db
+    - type: jsonPath
+      kind: statefulset
+      namespace: dojo-statefulset-build
+      name: db
+      path: "{.status.readyReplicas}"
+      equals: "2"
+    # One claim per Pod, named <template>-<pod> by the controller. Checking
+    # both names is what proves a volumeClaimTemplate was used rather than two
+    # hand-made claims.
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-statefulset-build
+      name: data-db-0
+      path: "{.status.phase}"
+      equals: Bound
+    - type: jsonPath
+      kind: pvc
+      namespace: dojo-statefulset-build
+      name: data-db-1
+      path: "{.status.phase}"
+      equals: Bound
+    - type: command
+      description: each Pod resolves under the headless Service by its own name
+      # Grep for the answer rather than trusting the exit code: busybox
+      # nslookup exits 0 on an empty NOERROR reply as well as on a real one.
+      command: |
+        kubectl -n dojo-statefulset-build exec db-0 -- \
+          nslookup db-1.db.dojo-statefulset-build.svc.cluster.local 2>/dev/null \
+          | grep -E '^Name:'
+exam: {eligible: true}
+conflicts: [namespace:dojo-statefulset-build, storageclass:dojo-statefulset]

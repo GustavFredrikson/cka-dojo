@@ -1,0 +1,15 @@
+# Something recognisable to have in etcd while the snapshot is taken. The
+# snapshot's key count is graded, so the cluster must not be empty -- it never
+# is, but a lab that depends on that should say so out loud.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dojo-etcd-snapshot
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ledger
+  namespace: dojo-etcd-snapshot
+data:
+  entries: "opening balance"

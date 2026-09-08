@@ -8,3 +8,4 @@ labs:
   - kustomize-release
   - helm-release
   - crd-resource
+  - operator-reconcile

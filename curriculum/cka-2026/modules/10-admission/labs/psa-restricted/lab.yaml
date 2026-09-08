@@ -1,0 +1,61 @@
+schemaVersion: 1
+id: psa-restricted
+title: A workload that admission will not accept
+learningStage: guided-fix
+prerequisites: [quota-blocked]
+domain: [workloads-scheduling, troubleshooting]
+skills: [pod-security-admission, resource-management, deployments, application-troubleshooting]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: standard}
+setup: {apply: [manifests/broken.yaml]}
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-psa, name: report, minReplicas: 2}
+    # The namespace's policy must still be enforced. Dropping the label, or
+    # relaxing it to `baseline`/`privileged`, makes the symptom go away by
+    # removing the control -- which is the wrong answer and an easy one.
+    - type: jsonPath
+      kind: namespace
+      name: dojo-psa
+      path: '{.metadata.labels.pod-security\.kubernetes\.io/enforce}'
+      equals: restricted
+    - type: command
+      description: the Pods satisfy the restricted standard rather than being exempted from it
+      command: |
+        set -e
+        q() { kubectl -n dojo-psa get deployment report -o jsonpath="$1"; }
+        test "$(q '{.spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation}')" = false
+        test "$(q '{.spec.template.spec.containers[0].securityContext.capabilities.drop[*]}')" = ALL
+        nonroot="$(q '{.spec.template.spec.securityContext.runAsNonRoot}')$(q '{.spec.template.spec.containers[0].securityContext.runAsNonRoot}')"
+        case "$nonroot" in *true*) ;; *) echo "runAsNonRoot is not set"; exit 1 ;; esac
+        seccomp="$(q '{.spec.template.spec.securityContext.seccompProfile.type}')$(q '{.spec.template.spec.containers[0].securityContext.seccompProfile.type}')"
+        case "$seccomp" in *RuntimeDefault*|*Localhost*) ;; *) echo "seccompProfile is not set"; exit 1 ;; esac
+        echo "restricted requirements met"
+      stdout: {contains: restricted requirements met}
+hints:
+  - The Deployment reports no available replicas and there are no Pods at all.
+    Something refused to create them, so ask the object that tried.
+  - '`kubectl -n dojo-psa describe replicaset` carries the rejection, and the
+    rejection names every rule that was broken.'
+  - The namespace opts into a policy through a label. Read it -- and then fix
+    the workload to satisfy the policy, rather than the namespace to stop
+    asking.
+  - |
+    The `restricted` standard needs four things on this Pod:
+
+    ```
+    securityContext:                 # pod level
+      runAsNonRoot: true
+      seccompProfile: {type: RuntimeDefault}
+    ```
+    ```
+    securityContext:                 # container level
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
+    ```
+
+    busybox will run happily as a non-root user; set `runAsUser` to something
+    non-zero if the image insists otherwise.
+exam: {eligible: true}
+conflicts: [namespace:dojo-psa]

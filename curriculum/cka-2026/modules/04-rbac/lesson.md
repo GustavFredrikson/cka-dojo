@@ -34,6 +34,9 @@ binding determines who receives those permissions and, critically, where.
 - `ServiceAccount`: a namespaced workload identity.
 - Users and groups: names presented by authentication; Kubernetes has no User
   API object to create.
+- `CertificateSigningRequest`: cluster-scoped. How a *user* identity is
+  actually created — a client certificate whose `CN` becomes the username and
+  whose each `O` becomes a group.
 
 A RoleBinding may reference a ClusterRole. The permissions still apply only in
 the RoleBinding's namespace. This is useful for defining one reusable reader
@@ -56,7 +59,24 @@ For a ServiceAccount:
 ```bash
 kubectl auth can-i list pods -n backend \
   --as system:serviceaccount:backend:builder
+kubectl create rolebinding r --role=reader --serviceaccount=backend:builder
+kubectl -n backend create token builder --duration=10m
 ```
+
+Creating a user identity, end to end:
+
+```bash
+openssl genrsa -out alice.key 2048
+openssl req -new -key alice.key -out alice.csr -subj "/CN=alice/O=devs"
+# submit a CertificateSigningRequest with request: $(base64 -w0 alice.csr),
+# signerName: kubernetes.io/kube-apiserver-client, usages: ["client auth"]
+kubectl certificate approve alice
+kubectl get csr alice -o jsonpath='{.status.certificate}' | base64 -d > alice.crt
+kubectl auth whoami --kubeconfig alice.kubeconfig
+```
+
+`kubectl auth whoami` answers "who does the cluster think I am", which
+separates an authentication problem from an authorisation one in one command.
 
 Resource API groups matter. Pods belong to the core group `""`; Deployments
 belong to `apps`:
@@ -110,6 +130,20 @@ The API server's answer is the final truth. Reading YAML and deciding that it
   must be recreated.
 - Testing as the current cluster administrator instead of impersonating the
   intended subject with `--as`.
+- Binding to a certificate's `CN` when the intent was its group, or the other
+  way round. Both are in the subject; only one of them scales to a second
+  person.
+- Choosing the wrong `signerName` on a CertificateSigningRequest. The
+  certificate is issued and then rejected at authentication time, which is a
+  confusing way to lose ten minutes.
+- Building a kubeconfig without `--embed-certs=true`, so it holds paths and
+  breaks as soon as anything moves — or forgetting `use-context`, which fails
+  as `context was not found` and looks like a certificate problem.
+- Expecting `kubectl get secret` to show a ServiceAccount token. Since 1.24
+  none is created automatically; tokens are requested, short-lived, and bound
+  to an audience.
+- Writing `--serviceaccount=builder` without its namespace. The real subject
+  is `system:serviceaccount:<namespace>:<name>`.
 
 ## 5-minute walkthrough
 
@@ -137,10 +171,14 @@ kubectl delete namespace demo-rbac
 
 The path progresses from an explicit ServiceAccount grant to independent
 construction, inspection, known repair and symptom-based authorization repair.
+`rbac-csr` and `sa-token` then cover where the two kinds of identity come
+from, rather than assuming they exist.
 
 ```bash
 dojo start rbac-follow
 dojo start rbac-namespace-reader
+dojo start rbac-csr
+dojo start sa-token
 dojo start rbac-inspect
 dojo start rbac-guided-binding
 dojo start rbac-contextual

@@ -1,0 +1,132 @@
+schemaVersion: 1
+id: coredns-corefile
+title: Service names stop resolving, external ones still work
+learningStage: guided-fix
+prerequisites: [coredns-down]
+domain: [services-networking, troubleshooting]
+skills: [coredns, coredns-config, dns, configmaps]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-coredns-corefile, kind: deployment, name: web}
+    - {namespace: dojo-coredns-corefile, kind: deployment, name: dnsprobe}
+  faults:
+    - type: nodeExec
+      node: cp1
+      # CoreDNS is told to serve a different cluster domain than the one every
+      # Pod's resolv.conf searches. The server is healthy, its Pods are Ready,
+      # and it answers external queries perfectly.
+      #
+      # There is deliberately no backup of the ConfigMap. The fault is a single
+      # reversible substitution, so undo reverses it -- and a saved copy would
+      # be taken from whatever the previous attempt left behind, which is how a
+      # broken Corefile gets enshrined as the baseline (see the reset notes in
+      # docs/authoring-labs.md). Reversing is idempotent: if the learner fixed
+      # it, or fixed it some other way, the substitution matches nothing.
+      script: |
+        set -euo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl -n kube-system get configmap coredns -o yaml \
+          | sed 's/cluster\.local/cluster.internal/g' \
+          | kubectl apply -f -
+        kubectl -n kube-system rollout restart deployment coredns
+        kubectl -n kube-system rollout status deployment coredns --timeout=180s
+        # `rollout status` is not the end of it. CoreDNS runs two replicas
+        # behind one Service and the new config reaches them at slightly
+        # different moments, so for a while about half of all queries are
+        # still answered correctly. Returning then hands over a cluster that
+        # works intermittently and settles into the real symptom a minute in.
+        #
+        # Note the test: `nslookup` in busybox exits 0 on an empty NOERROR
+        # reply as well as on a real answer, and only non-zero on NXDOMAIN --
+        # so its exit code reports "resolved" for about a third of queries
+        # against a broken cluster DNS. A resolved name is one that produced a
+        # `Name:` line.
+        probe() {
+          kubectl -n dojo-coredns-corefile exec deployment/dnsprobe -- \
+            nslookup web.dojo-coredns-corefile.svc.cluster.local 2>/dev/null \
+            | grep -qE '^Name:'
+        }
+        fails=0
+        for i in $(seq 1 90); do
+          if probe; then fails=0; else
+            fails=$((fails + 1))
+            [ "$fails" -ge 5 ] && break
+          fi
+          sleep 2
+        done
+      undo: |
+        set -uo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl -n kube-system get configmap coredns -o yaml \
+          | sed 's/cluster\.internal/cluster.local/g' \
+          | kubectl apply -f -
+        kubectl -n kube-system rollout restart deployment coredns
+        kubectl -n kube-system rollout status deployment coredns --timeout=180s
+        # Do not return until cluster DNS is reliably answering again, or the
+        # next lab's setup runs against a cluster that cannot resolve.
+        dns=$(kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}')
+        oks=0
+        for i in $(seq 1 90); do
+          if nslookup kubernetes.default.svc.cluster.local "$dns" 2>/dev/null \
+               | grep -qE '^Name:'; then
+            oks=$((oks + 1))
+            [ "$oks" -ge 5 ] && break
+          else
+            oks=0
+          fi
+          sleep 2
+        done
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: kube-system, name: coredns, minReplicas: 2}
+    - type: command
+      description: CoreDNS is authoritative for the domain this cluster actually uses
+      command: |
+        kubectl -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}' \
+          | grep -qE '^\s*kubernetes\s+cluster\.local\b'
+    # busybox nslookup exits 0 on an empty NOERROR answer as well as on a real
+    # one, so its exit code cannot be used to mean "resolved". A forward answer
+    # carries a `Name:` line; a reverse answer carries `name =`.
+    - type: command
+      description: a Pod resolves a Service in its own namespace by short name
+      command: |
+        for i in $(seq 1 25); do
+          kubectl -n dojo-coredns-corefile exec deployment/dnsprobe -- \
+            nslookup web 2>/dev/null | grep -qE '^Name:' && exit 0
+          sleep 3
+        done
+        exit 1
+    - type: command
+      description: reverse lookups for Service addresses still work
+      command: |
+        ip=$(kubectl -n dojo-coredns-corefile get svc web -o jsonpath='{.spec.clusterIP}')
+        for i in $(seq 1 15); do
+          kubectl -n dojo-coredns-corefile exec deployment/dnsprobe -- \
+            nslookup "$ip" 2>/dev/null | grep -q 'name = ' && exit 0
+          sleep 3
+        done
+        exit 1
+hints:
+  - CoreDNS is running and Ready, and it answers queries -- try resolving
+    something outside the cluster from the same Pod. Only cluster names fail.
+  - CoreDNS reads its whole configuration from one ConfigMap in `kube-system`.
+    Read it, and compare what it claims to serve against the search domains in
+    a Pod's `/etc/resolv.conf`.
+  - The `kubernetes` plugin takes the cluster domain as its first argument.
+    Everything else in that file is fine; one word is wrong.
+  - |
+    ```
+    kubectl -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}'
+    kubectl -n dojo-coredns-corefile exec deployment/dnsprobe -- cat /etc/resolv.conf
+    kubectl -n kube-system edit configmap coredns
+    kubectl -n kube-system rollout restart deployment coredns
+    ```
+
+    The `reload` plugin picks up changes on its own, but it can take a minute
+    or two. Restarting is how you stop waiting.
+exam: {eligible: true}
+conflicts: [namespace:dojo-coredns-corefile, cluster.coredns]

@@ -1,0 +1,146 @@
+schemaVersion: 1
+id: kubeconfig-repair
+title: You cannot reach the cluster
+learningStage: contextual-fix
+domain: [cluster-architecture, troubleshooting]
+skills: [kubeconfig, certificates, control-plane-components, kubectl-workflows]
+difficulty: 2
+targetMinutes: 10
+environment: {profile: standard}
+
+# Three different ways a kubeconfig can be wrong, with three different error
+# messages and three different mental models. The repair is the same in all
+# three -- and so is the shortcut, which is why the task forbids it.
+#
+# The first fault belongs to the lab rather than to any variant, so it is
+# injected before whichever variant runs and repaired after it: it stashes a
+# copy of the file while it still works, and puts that copy back on teardown.
+# The copy is only refreshed when the current file actually reaches the
+# cluster, so a learner who resets a half-fixed lab cannot end up with a
+# broken config enshrined as the baseline.
+setup:
+  faults:
+    - type: nodeExec
+      node: terminal
+      script: |
+        set -uo pipefail
+        cfg=/home/student/.kube/config
+        mkdir -p /var/lib/dojo
+        if runuser -u student -- env HOME=/home/student KUBECONFIG="$cfg" \
+             kubectl get --raw=/readyz >/dev/null 2>&1; then
+          cp "$cfg" /var/lib/dojo/kubeconfig-original
+          echo "stashed a working kubeconfig"
+        else
+          echo "current kubeconfig does not reach the cluster; keeping any earlier copy"
+        fi
+      undo: |
+        set -uo pipefail
+        cfg=/home/student/.kube/config
+        install -d -o student -g student -m 0700 /home/student/.kube
+        if [ -s /var/lib/dojo/kubeconfig-original ]; then
+          cp /var/lib/dojo/kubeconfig-original "$cfg"
+        else
+          # Nothing stashed -- rebuild from the control plane, which is also
+          # the repair the learner is being taught.
+          runuser -u student -- env HOME=/home/student ssh \
+            -i /home/student/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            cp1 'sudo cat /etc/kubernetes/admin.conf' > "$cfg"
+        fi
+        chown student:student "$cfg"
+        chmod 0600 "$cfg"
+
+variants:
+  options:
+    - id: wrong-server-port
+      faults:
+        - type: nodeExec
+          node: terminal
+          script: |
+            set -euo pipefail
+            sed -i 's#:6443#:6444#' /home/student/.kube/config
+          # The lab-level fault above owns restoring the file.
+          undo: 'true'
+
+    - id: untrusted-ca
+      faults:
+        - type: nodeExec
+          node: terminal
+          # The client certificate is a perfectly well-formed certificate that
+          # did not sign anything, so TLS verification fails rather than the
+          # file failing to parse.
+          script: |
+            set -euo pipefail
+            cfg=/home/student/.kube/config
+            cert=$(awk '/client-certificate-data:/ {print $2; exit}' "$cfg")
+            test -n "$cert"
+            sed -i "s#^\( *certificate-authority-data:\) .*#\1 ${cert}#" "$cfg"
+          undo: 'true'
+
+    - id: wrong-context
+      faults:
+        - type: nodeExec
+          node: terminal
+          # Nothing is wrong with the credentials or the server; the file just
+          # selects a context it does not contain.
+          script: |
+            set -euo pipefail
+            grep -q '^current-context:' /home/student/.kube/config
+            sed -i 's#^current-context: .*#current-context: dojo-staging#' \
+              /home/student/.kube/config
+          undo: 'true'
+
+grading:
+  all:
+    - type: command
+      target: terminal
+      description: the student's own kubeconfig reaches the cluster
+      command: |
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl get nodes -o name
+      stdout: {contains: node/cp1}
+    - type: command
+      target: terminal
+      description: it still authenticates as an identity with full access
+      command: |
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl auth can-i create pods --all-namespaces
+      stdout: {contains: "yes"}
+    - type: command
+      target: terminal
+      description: the repair is in the default kubeconfig, not in an environment variable
+      command: test -s /home/student/.kube/config
+
+hints:
+  - Read the error message before changing anything. "Connection refused",
+    "unknown authority" and "context does not exist" fail at three different
+    layers, and only one of them is about the network.
+  - >-
+    Your kubeconfig has four things in it that can be wrong independently:
+    the server URL, the CA that verifies it, your client certificate, and
+    which context is selected. Work out which layer the error comes from and
+    you know which one to look at.
+  - |
+    You are cluster-admin on the nodes, and `ssh cp1` works. A correct
+    kubeconfig for this cluster already exists there -- kubeadm wrote it.
+    Compare yours against it field by field:
+
+    ```
+    kubectl config view --raw
+    ssh cp1 'sudo cat /etc/kubernetes/admin.conf'
+    ```
+  - |
+    Either fix the field that differs:
+
+    ```
+    kubectl config set-cluster kubernetes --server=https://<cp1-ip>:6443
+    ```
+
+    or replace the file wholesale, which is what most people do on the exam:
+
+    ```
+    ssh cp1 'sudo cat /etc/kubernetes/admin.conf' > ~/.kube/config
+    chmod 600 ~/.kube/config
+    ```
+exam: {eligible: true}
+conflicts: [terminal.path:/home/student/.kube/config]

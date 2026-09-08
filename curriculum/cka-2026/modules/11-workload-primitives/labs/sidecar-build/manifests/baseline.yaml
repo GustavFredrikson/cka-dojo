@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-sidecar}
+---
+# An app that logs to a file inside a shared volume and never to stdout, which
+# is exactly the situation a log-shipping sidecar exists for.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: app, namespace: dojo-sidecar}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: app}}
+  template:
+    metadata: {labels: {app: app}}
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - while true; do echo "dojo-ledger-entry $(date -Iseconds)" >> /var/log/app/app.log; sleep 2; done
+          volumeMounts:
+            - {name: logs, mountPath: /var/log/app}
+      volumes:
+        - name: logs
+          emptyDir: {}

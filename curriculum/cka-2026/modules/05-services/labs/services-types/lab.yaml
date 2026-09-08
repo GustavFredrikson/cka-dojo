@@ -1,0 +1,78 @@
+schemaVersion: 1
+id: services-types
+title: The other two Service types
+learningStage: build
+prerequisites: [services-nodeport]
+domain: [services-networking]
+skills: [service-types, services, nodeport, dns, kubectl-workflows]
+difficulty: 2
+targetMinutes: 11
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-services-types, kind: deployment, name: web}
+    - {namespace: dojo-services-types, kind: deployment, name: dnsprobe}
+checkpoints:
+  - id: external-ip
+    task: |
+      After changing `web` to a LoadBalancer, what does `kubectl get svc web`
+      show in the EXTERNAL-IP column? Give it exactly as printed.
+    answer:
+      accepted: ["<pending>", "pending"]
+      caseInsensitive: true
+  - id: still-reachable
+    task: |
+      A LoadBalancer Service is a superset of the two below it. Which other
+      Service type's behaviour does it therefore still give you, so that `web`
+      is reachable from outside the cluster even with no cloud provider?
+    answer: {accepted: [NodePort, nodeport], caseInsensitive: true}
+grading:
+  all:
+    - type: jsonPath
+      kind: service
+      namespace: dojo-services-types
+      name: web
+      path: "{.spec.type}"
+      equals: LoadBalancer
+    # A LoadBalancer allocates a node port of its own; without one, the type
+    # was set but the Service is not actually externally reachable here.
+    - type: command
+      description: the LoadBalancer Service has been allocated a node port
+      command: |
+        port=$(kubectl -n dojo-services-types get svc web \
+          -o jsonpath='{.spec.ports[0].nodePort}')
+        echo "nodePort=${port:-none}"
+        test -n "$port"
+      stdout: {contains: nodePort=3}
+    - {type: httpService, namespace: dojo-services-types, service: web, port: 80}
+    - type: jsonPath
+      kind: service
+      namespace: dojo-services-types
+      name: api-alias
+      path: "{.spec.type}"
+      equals: ExternalName
+    - type: jsonPath
+      kind: service
+      namespace: dojo-services-types
+      name: api-alias
+      path: "{.spec.externalName}"
+      equals: kubernetes.default.svc.cluster.local
+    # An ExternalName Service is a DNS record and nothing else: no cluster IP,
+    # no selector, no EndpointSlice.
+    - type: command
+      description: the alias has no cluster IP of its own
+      command: |
+        ip=$(kubectl -n dojo-services-types get svc api-alias \
+          -o jsonpath='{.spec.clusterIP}')
+        echo "clusterIP=${ip:-none}"
+        test -z "$ip"
+      stdout: {contains: clusterIP=none}
+    - type: command
+      description: a Pod resolves the alias and follows it to the target Service
+      command: |
+        kubectl -n dojo-services-types exec deployment/dnsprobe -- \
+          nslookup api-alias.dojo-services-types.svc.cluster.local
+      stdout: {contains: kubernetes.default.svc.cluster.local}
+exam: {eligible: true}
+conflicts: [namespace:dojo-services-types]

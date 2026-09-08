@@ -1,0 +1,86 @@
+schemaVersion: 1
+id: operator-reconcile
+title: A change that will not stay changed
+learningStage: guided-fix
+prerequisites: [crd-resource]
+domain: [cluster-architecture]
+skills: [operators, custom-resources, daemonsets, kubectl-workflows]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: standard}
+setup:
+  apply: [manifests/namespace.yaml]
+  faults:
+    # The Installation CR is cluster-scoped and pre-existing cluster state, so
+    # neither a baseline manifest nor a plain patch fault could put it back.
+    # This owns both directions explicitly, and waits for the operator to have
+    # reconciled the value back before returning.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl patch installation default --type=merge \
+          -p '{"spec":{"nodeUpdateStrategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1}}}}'
+      undo: |
+        set -uo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl patch installation default --type=merge \
+          -p '{"spec":{"nodeUpdateStrategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1}}}}'
+        for i in $(seq 1 45); do
+          [ "$(kubectl -n calico-system get ds calico-node \
+              -o jsonpath='{.spec.updateStrategy.rollingUpdate.maxUnavailable}')" = "1" ] && break
+          sleep 2
+        done
+checkpoints:
+  - id: owner
+    task: |
+      Look at the ownerReferences on the `calico-node` DaemonSet in
+      `calico-system`. Which `kind` owns it?
+    answer: {accepted: [Installation], caseInsensitive: true}
+  - id: reverted
+    task: |
+      Patch that DaemonSet's `spec.updateStrategy.rollingUpdate.maxUnavailable`
+      to `3` by hand and watch it for half a minute. What value does it hold
+      afterwards?
+    answer: {accepted: ["1"]}
+grading:
+  all:
+    - type: jsonPath
+      kind: installation
+      name: default
+      path: "{.spec.nodeUpdateStrategy.rollingUpdate.maxUnavailable}"
+      equals: "2"
+    # The proof that it was done through the operator rather than around it:
+    # the DaemonSet agrees, and only the operator writes that field.
+    - type: command
+      description: the operator has reconciled the new value into the calico-node DaemonSet
+      command: |
+        for i in $(seq 1 30); do
+          [ "$(kubectl -n calico-system get ds calico-node \
+              -o jsonpath='{.spec.updateStrategy.rollingUpdate.maxUnavailable}')" = "2" ] && exit 0
+          sleep 2
+        done
+        exit 1
+    - type: command
+      description: the CNI is still healthy on every node
+      command: |
+        kubectl -n calico-system rollout status daemonset/calico-node --timeout=120s
+      stdout: {contains: successfully rolled out}
+hints:
+  - Find out what created the object you are trying to change. `kubectl get -o
+    yaml` on it, and read the metadata before the spec.
+  - An operator's job is to make the cluster match a declaration. If your edit
+    disagrees with that declaration, the operator is not going to lose.
+  - Find the custom resource that declares the CNI installation. It is
+    cluster-scoped, and there is exactly one of it.
+  - |
+    ```
+    kubectl -n calico-system get ds calico-node -o jsonpath='{.metadata.ownerReferences}'
+    kubectl get installations.operator.tigera.io
+    kubectl explain installation.spec.nodeUpdateStrategy
+    kubectl patch installation default --type=merge \
+      -p '{"spec":{"nodeUpdateStrategy":{"rollingUpdate":{"maxUnavailable":2}}}}'
+    ```
+exam: {eligible: true}
+conflicts: [namespace:dojo-operator, cluster.cni, installation:default]

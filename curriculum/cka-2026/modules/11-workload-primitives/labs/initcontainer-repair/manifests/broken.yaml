@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dojo-initcontainer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: dojo-initcontainer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      # The gate: nothing starts until this name resolves. The Service it
+      # waits for does not exist, so the Pods sit in Init indefinitely and
+      # the container that would log something never runs.
+      initContainers:
+        - name: wait-for-db
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nslookup db.dojo-initcontainer.svc.cluster.local; do
+                echo "waiting for db"
+                sleep 2
+              done
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80

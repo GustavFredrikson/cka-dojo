@@ -14,3 +14,4 @@ labs:
   - services-no-endpoints
   - services-nodeport
   - services-target-port
+  - services-types

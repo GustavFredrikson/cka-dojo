@@ -8,6 +8,8 @@ domains:
 labs:
   - rbac-follow
   - rbac-namespace-reader
+  - rbac-csr
+  - sa-token
   - rbac-inspect
   - rbac-guided-binding
   - rbac-contextual

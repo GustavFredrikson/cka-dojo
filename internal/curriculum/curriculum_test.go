@@ -158,17 +158,18 @@ func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 	wantByModule := map[string]int{
 		"workloads":            10,
 		"scheduling":           7,
-		"rbac":                 5,
-		"services":             7,
-		"dns-networking":       3,
+		"rbac":                 7,
+		"services":             8,
+		"dns-networking":       5,
 		"network-policy":       5,
 		"ingress":              5,
 		"storage":              7,
-		"admission":            3,
-		"control-plane":        3,
-		"packaging-extensions": 3,
+		"admission":            4,
+		"workload-primitives":  6,
+		"control-plane":        8,
+		"packaging-extensions": 4,
 		"observability":        2,
-		"troubleshooting":      2,
+		"troubleshooting":      3,
 	}
 	total := 0
 	for topic, want := range wantByModule {
@@ -193,7 +194,7 @@ func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 			}
 		}
 	}
-	if want := 62; total != want {
+	if want := 81; total != want {
 		t.Errorf("curriculum has %d exercises, want %d", total, want)
 	}
 	if got := cur.LabCount(); got != total {

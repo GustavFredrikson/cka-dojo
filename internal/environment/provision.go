@@ -2,6 +2,7 @@ package environment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -208,10 +209,86 @@ func (m *Manager) Up(ctx context.Context, force bool) error {
 	if m.Profile.Provisioning == ProvisionNone {
 		return m.baseProvision(ctx, force)
 	}
+	if err := m.verifyNodeAddresses(ctx); err != nil {
+		return err
+	}
 	if err := m.baseProvision(ctx, force); err != nil {
 		return err
 	}
 	return m.kubeadmProvision(ctx, force)
+}
+
+// verifyNodeAddresses refuses to continue when a node's address no longer
+// matches the one it was provisioned with.
+//
+// Everything kubeadm writes embeds the address a node had at `kubeadm init`
+// time: the API server certificate's SANs, all four static Pod manifests,
+// every kubeconfig in /etc/kubernetes, and each kubelet's `--node-ip`. If an
+// address moves afterwards, none of that follows it and the control plane
+// cannot come back -- kubelet logs `failed to validate nodeIP: node IP "x" not
+// found in the host's network interfaces` and nothing else says why.
+//
+// Without this check the symptom is a ten-minute wait in WaitReady followed by
+// a timeout that names none of the above. Addresses are stable across an
+// ordinary stop/start -- Lima derives them from each instance's MAC -- so this
+// fires only when something really has changed, and then it says so at once.
+func (m *Manager) verifyNodeAddresses(ctx context.Context) error {
+	ips, err := m.allIPs(ctx)
+	if err != nil {
+		return err
+	}
+	type drift struct{ node, was, now string }
+	var moved []drift
+	for _, n := range m.Profile.Nodes {
+		if n.Role == RoleWorkstation {
+			// Not part of the cluster: its kubeconfig and /etc/hosts are
+			// rewritten on every Up, so a new address costs it nothing.
+			continue
+		}
+		// /etc/default/kubelet is the address this node was provisioned with,
+		// and the one kubelet will insist on. Absent on a first run.
+		out, err := m.Run(ctx, n.Name, "cat /etc/default/kubelet 2>/dev/null || true\n")
+		if err != nil {
+			return err
+		}
+		was := nodeIPArg(out)
+		if was == "" {
+			continue
+		}
+		if now := ips[n.Name]; now != was {
+			moved = append(moved, drift{node: n.Name, was: was, now: now})
+		}
+	}
+	if len(moved) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("node addresses have changed since this environment was built:\n")
+	for _, d := range moved {
+		fmt.Fprintf(&b, "  %s was provisioned as %s and is now %s\n", d.node, d.was, d.now)
+	}
+	b.WriteString("\nThe cluster's certificates, static Pod manifests and kubeconfigs all\n")
+	b.WriteString("embed the old addresses, so it cannot be brought back as it is.\n")
+	b.WriteString("Rebuild it with `dojo env reset`.")
+	return errors.New(b.String())
+}
+
+// nodeIPArg extracts the address from an /etc/default/kubelet body.
+//
+// The flag is not a separate word: the file holds a single assignment,
+// `KUBELET_EXTRA_ARGS=--node-ip=10.0.0.1`, so splitting on whitespace and
+// matching a prefix finds nothing. Search for the flag anywhere, then read to
+// the next separator so further arguments after it are ignored.
+func nodeIPArg(kubeletDefaults string) string {
+	_, after, ok := strings.Cut(kubeletDefaults, "--node-ip=")
+	if !ok {
+		return ""
+	}
+	after = strings.TrimLeft(after, `"'`)
+	if i := strings.IndexAny(after, " \t\r\n\"'"); i >= 0 {
+		after = after[:i]
+	}
+	return after
 }
 
 // baseProvision does the work every profile needs: name resolution between
@@ -361,6 +438,9 @@ func (m *Manager) kubeadmProvision(ctx context.Context, force bool) error {
 		return err
 	}
 	if err := m.step(ctx, cp.Name, "cni.sh", force, "installing Calico"); err != nil {
+		return err
+	}
+	if err := m.step(ctx, cp.Name, "etcd-tools.sh", force, "installing etcdctl and etcdutl"); err != nil {
 		return err
 	}
 

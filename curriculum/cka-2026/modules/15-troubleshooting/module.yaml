@@ -7,5 +7,6 @@ domains:
   - troubleshooting
   - cluster-architecture
 labs:
-  - node-not-ready
   - troubleshooting-logs
+  - debug-ephemeral
+  - node-not-ready

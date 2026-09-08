@@ -1,0 +1,13 @@
+id: 11-workload-primitives
+name: Workload primitives
+summary: >-
+  The workload kinds that are not Deployments: DaemonSets, StatefulSets, Jobs
+  and CronJobs, plus init containers, Pod priority and preemption.
+domains: [workloads-scheduling, troubleshooting]
+labs:
+  - daemonset-build
+  - jobs-build
+  - statefulset-build
+  - initcontainer-repair
+  - sidecar-build
+  - priority-preemption

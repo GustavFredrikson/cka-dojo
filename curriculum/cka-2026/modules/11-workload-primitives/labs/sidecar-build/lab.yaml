@@ -1,0 +1,69 @@
+schemaVersion: 1
+id: sidecar-build
+title: Ship a log file that never reaches stdout
+learningStage: build
+prerequisites: [initcontainer-repair]
+domain: [workloads-scheduling]
+skills: [sidecar-containers, init-containers, deployments, pod-logs]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady: [{namespace: dojo-sidecar, kind: deployment, name: app}]
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: dojo-sidecar, name: app, minReplicas: 1}
+    # A sidecar is an init container with restartPolicy: Always. An ordinary
+    # container in the same Pod would ship the same logs and would not be one,
+    # so the shape is graded, not only the outcome.
+    - type: jsonPath
+      kind: deployment
+      namespace: dojo-sidecar
+      name: app
+      path: '{.spec.template.spec.initContainers[?(@.name=="log-shipper")].restartPolicy}'
+      equals: Always
+    # These three all name a specific Running Pod rather than using
+    # `-l app=app` or `deployment/app`. During the learner's own rollout there
+    # are two Pods matching the label -- and `kubectl logs deployment/x` picks
+    # an arbitrary one, which is often the *old* terminating Pod that has no
+    # sidecar at all. Grading right after a rollout would otherwise fail for a
+    # reason that has nothing to do with the answer.
+    - type: command
+      description: the sidecar is running alongside the app, not finished
+      command: |
+        for i in $(seq 1 20); do
+          for p in $(kubectl -n dojo-sidecar get pods -l app=app \
+                       --field-selector=status.phase=Running -o name); do
+            kubectl -n dojo-sidecar get "$p" \
+              -o jsonpath='{.status.initContainerStatuses[?(@.name=="log-shipper")].state}' \
+              2>/dev/null | grep -q running && exit 0
+          done
+          sleep 3
+        done
+        exit 1
+    - type: command
+      description: the app's log lines are readable from the sidecar's output
+      command: |
+        for i in $(seq 1 20); do
+          for p in $(kubectl -n dojo-sidecar get pods -l app=app \
+                       --field-selector=status.phase=Running -o name); do
+            kubectl -n dojo-sidecar logs "$p" -c log-shipper --tail=20 2>/dev/null \
+              | grep -q dojo-ledger-entry && exit 0
+          done
+          sleep 3
+        done
+        exit 1
+    - type: command
+      description: the app container still writes only to its log file
+      # Asserting an absence, so the logs call must be shown to have worked --
+      # otherwise a failed command produces empty output and passes.
+      command: |
+        pod=$(kubectl -n dojo-sidecar get pods -l app=app \
+                --field-selector=status.phase=Running -o name | head -1)
+        test -n "$pod"
+        out=$(kubectl -n dojo-sidecar logs "$pod" -c app --tail=20 2>&1)
+        case "$out" in *dojo-ledger-entry*) echo "app is logging to stdout"; exit 1 ;; esac
+        kubectl -n dojo-sidecar exec "$pod" -c app -- test -s /var/log/app/app.log
+exam: {eligible: true}
+conflicts: [namespace:dojo-sidecar]

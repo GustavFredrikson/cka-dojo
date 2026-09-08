@@ -1,0 +1,110 @@
+schemaVersion: 1
+id: coredns-down
+title: Nothing in the cluster can resolve a name
+learningStage: contextual-fix
+prerequisites: [dns-service-discovery]
+domain: [services-networking, troubleshooting]
+skills: [coredns, dns, services, endpointslices, service-debugging]
+difficulty: 2
+targetMinutes: 10
+environment: {profile: standard}
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-coredns-down, kind: deployment, name: web}
+    - {namespace: dojo-coredns-down, kind: deployment, name: dnsprobe}
+
+# Cluster DNS is not part of any lab's baseline, so a patch or scale fault
+# could not be undone by recreating manifests. Both variants therefore use
+# nodeExec with an explicit undo that restores kubeadm's own configuration.
+variants:
+  options:
+    - id: no-replicas
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            set -euo pipefail
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n kube-system scale deployment coredns --replicas=0
+            kubectl -n kube-system wait --for=delete pod -l k8s-app=kube-dns --timeout=120s
+          undo: |
+            set -uo pipefail
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n kube-system scale deployment coredns --replicas=2
+            kubectl -n kube-system rollout status deployment coredns --timeout=180s
+
+    - id: service-selector
+      faults:
+        - type: nodeExec
+          node: cp1
+          # The Pods are healthy and serving; the Service in front of them
+          # selects a label nothing carries, so every Pod's nameserver
+          # address routes to no backend at all.
+          script: |
+            set -euo pipefail
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n kube-system patch service kube-dns \
+              -p '{"spec":{"selector":{"k8s-app":"kube-dns-retired"}}}'
+            # The EndpointSlice empties immediately, but kube-proxy needs a
+            # moment to stop forwarding to the addresses it already had. Wait
+            # for consecutive failures, not the first one: with two replicas
+            # still reachable, a single failure proves nothing.
+            fails=0
+            for i in $(seq 1 45); do
+              # busybox nslookup exits 0 on an empty NOERROR reply too, so
+              # only a `Name:` line means the name actually resolved.
+              if kubectl -n dojo-coredns-down exec deployment/dnsprobe -- \
+                   nslookup web.dojo-coredns-down.svc.cluster.local 2>/dev/null \
+                   | grep -qE '^Name:'; then
+                fails=0
+              else
+                fails=$((fails + 1))
+                [ "$fails" -ge 6 ] && break
+              fi
+              sleep 2
+            done
+          undo: |
+            set -uo pipefail
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n kube-system patch service kube-dns \
+              -p '{"spec":{"selector":{"k8s-app":"kube-dns"}}}'
+
+grading:
+  all:
+    - {type: deploymentAvailable, namespace: kube-system, name: coredns, minReplicas: 2}
+    - {type: serviceHasEndpoints, namespace: kube-system, name: kube-dns, port: 53, minEndpoints: 2}
+    - type: command
+      description: a Pod in an application namespace resolves a Service by name
+      command: |
+        # Once the endpoints exist, resolution recovers in seconds -- nothing
+        # on the client side has to be restarted. Ten tries is plenty, and
+        # keeps a failing grade from making the learner wait a minute.
+        for i in $(seq 1 10); do
+          kubectl -n dojo-coredns-down exec deployment/dnsprobe -- \
+            nslookup web.dojo-coredns-down.svc.cluster.local 2>/dev/null \
+            | grep -qE '^Name:' && exit 0
+          sleep 3
+        done
+        exit 1
+
+hints:
+  - Every Pod in the cluster is affected, so the thing that broke is not in
+    your namespace. Find out what a Pod's `/etc/resolv.conf` points at.
+  - That address belongs to a Service in `kube-system`. Check the Service, its
+    EndpointSlices, and the Pods behind it -- in that order.
+  - Compare what the Service selects against the labels the CoreDNS Pods
+    actually carry, and compare the Deployment's replica count against how
+    many Pods exist. Exactly one of the two is wrong.
+  - |
+    ```
+    kubectl -n dojo-coredns-down exec deployment/dnsprobe -- cat /etc/resolv.conf
+    kubectl -n kube-system get deployment,svc,endpointslices -l k8s-app=kube-dns
+    kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.selector}'
+    kubectl -n kube-system get pods -l k8s-app=kube-dns --show-labels
+    ```
+
+    kubeadm runs CoreDNS with two replicas, labelled `k8s-app=kube-dns`, behind
+    a Service of the same name.
+exam: {eligible: true}
+conflicts: [namespace:dojo-coredns-down, cluster.coredns]

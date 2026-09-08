@@ -1,0 +1,7 @@
+# Nothing of the exercise lives here; the lab works on cluster state that the
+# CNI operator already owns. The namespace exists so teardown has something to
+# sweep and so the lab follows the same shape as its neighbours.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dojo-operator

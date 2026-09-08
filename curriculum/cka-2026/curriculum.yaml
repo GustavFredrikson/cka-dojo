@@ -75,6 +75,8 @@ skills:
     name: ResourceQuota
   - id: limit-ranges
     name: LimitRange
+  - id: pod-security-admission
+    name: Pod Security Admission
   - id: services
     name: Services
   - id: selectors
@@ -95,6 +97,10 @@ skills:
     name: Kubernetes DNS
   - id: coredns
     name: CoreDNS service discovery
+  - id: coredns-config
+    name: CoreDNS configuration
+  - id: service-types
+    name: Service types
   - id: rbac
     name: RBAC
   - id: roles
@@ -105,6 +111,10 @@ skills:
     name: ServiceAccounts
   - id: authorization-checks
     name: Verifying authorization
+  - id: certificate-signing-requests
+    name: CertificateSigningRequests
+  - id: serviceaccount-tokens
+    name: ServiceAccount tokens
   - id: network-policies
     name: NetworkPolicy
   - id: pod-connectivity
@@ -137,12 +147,40 @@ skills:
     name: Control-plane components
   - id: node-maintenance
     name: Node maintenance
+  - id: etcd
+    name: etcd
+  - id: etcd-backup
+    name: etcd backup and restore
+  - id: certificates
+    name: Cluster certificates
+  - id: kubeconfig
+    name: kubeconfig files
   - id: helm
     name: Helm
   - id: kustomize
     name: Kustomize
   - id: custom-resources
     name: Custom resources and CRDs
+  - id: operators
+    name: Operators and reconciliation
+  - id: daemonsets
+    name: DaemonSets
+  - id: statefulsets
+    name: StatefulSets
+  - id: jobs
+    name: Jobs
+  - id: cronjobs
+    name: CronJobs
+  - id: init-containers
+    name: Init containers
+  - id: sidecar-containers
+    name: Sidecar containers
+  - id: pod-priority
+    name: PriorityClasses
+  - id: preemption
+    name: Scheduler preemption
+  - id: ephemeral-containers
+    name: Ephemeral containers and kubectl debug
 
 modules:
   - 02-workloads
@@ -154,6 +192,7 @@ modules:
   - 08-ingress
   - 09-storage
   - 10-admission
+  - 11-workload-primitives
   - 12-control-plane
   - 13-packaging-extensions
   - 14-observability
@@ -164,11 +203,6 @@ modules:
 # ready on the strength of labs that exist while the exam also tests things
 # this content set does not cover. Delete an entry the day a lab lands.
 knownGaps:
-  - id: etcd-backup-restore
-    name: etcd backup and restore
-    domain: cluster-architecture
-    note: >-
-      Near-certain on the exam. Nothing here takes a snapshot or restores one.
   - id: cluster-upgrade
     name: Cluster lifecycle and kubeadm upgrade
     domain: cluster-architecture
@@ -181,25 +215,19 @@ knownGaps:
     name: Highly-available control plane
     domain: cluster-architecture
     note: Waiting on the ha environment profile.
-  - id: certificate-management
-    name: Certificates and kubeconfig repair
+  - id: certificate-rotation
+    name: Certificate expiry and renewal
     domain: cluster-architecture
     note: >-
-      No lab expires a certificate or breaks a kubeconfig.
+      `certs-expiration` reads expiry dates and `kubeconfig-repair` rebuilds a
+      broken kubeconfig, but no lab expires a certificate and makes the learner
+      renew it: kubeadm certificates are valid for a year and there is no
+      supported way to backdate them.
   - id: extension-interfaces
     name: Extension interfaces (CNI, CSI, CRI)
     domain: cluster-architecture
-    note: Mentioned in lessons, never exercised.
-  - id: coredns-configuration
-    name: CoreDNS configuration
-    domain: services-networking
-    note: The DNS labs consume CoreDNS but never repair it.
-  - id: service-types
-    name: LoadBalancer and ExternalName Services
-    domain: services-networking
-    note: Only ClusterIP and NodePort are exercised.
-  - id: workload-primitives
-    name: DaemonSet, StatefulSet, Job and CronJob
-    domain: workloads-scheduling
     note: >-
-      Deployments are covered thoroughly; the other workload kinds are not.
+      `crictl` is the diagnostic route in etcd-unreachable,
+      controlplane-scheduler and node-not-ready, and operator-reconcile now
+      covers how the CNI is installed and managed. What is still missing is
+      replacing a CNI or a CSI driver, which needs the raw profile.

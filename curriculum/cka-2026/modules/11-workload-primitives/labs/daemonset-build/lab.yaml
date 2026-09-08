@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: daemonset-build
+title: Run an agent on every node
+learningStage: build
+domain: [workloads-scheduling]
+skills: [daemonsets, tolerations, taints, kubectl-workflows]
+difficulty: 2
+targetMinutes: 8
+environment: {profile: standard}
+setup: {apply: [manifests/namespace.yaml]}
+grading:
+  all:
+    # desiredNumberScheduled is derived from the nodes the Pod could land on,
+    # so 3 rather than 2 is the whole point: it can only reach the control
+    # plane through a toleration.
+    - type: jsonPath
+      kind: daemonset
+      namespace: dojo-daemonset-build
+      name: node-agent
+      path: "{.status.desiredNumberScheduled}"
+      equals: "3"
+    - type: jsonPath
+      kind: daemonset
+      namespace: dojo-daemonset-build
+      name: node-agent
+      path: "{.status.numberReady}"
+      equals: "3"
+exam: {eligible: true}
+conflicts: [namespace:dojo-daemonset-build]

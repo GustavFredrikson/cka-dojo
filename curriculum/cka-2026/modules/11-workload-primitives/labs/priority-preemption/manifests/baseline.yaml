@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dojo-priority
+---
+# The batch tier the filler workload runs in.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: dojo-batch
+value: 1000
+globalDefault: false
+description: "Best-effort batch work. First to be evicted."
+---
+# Shipped deliberately wrong, and shipped here rather than left to the
+# learner: a PriorityClass is cluster-scoped, so one the learner created would
+# survive `dojo reset` and hand out a free pass on the next attempt. Owned by
+# the lab, it is restored to this failing value every time.
+#
+# `value` is immutable, which is the point of the exercise: this cannot be
+# patched into shape.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: dojo-critical
+value: 100
+globalDefault: false
+description: "Revenue-path workloads. Preempts batch."
