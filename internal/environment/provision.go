@@ -45,6 +45,9 @@ type scriptVars struct {
 	StudentUser         string
 	JoinCommand         string
 	Kubeconfig          string
+	// ShellDefaults is the .bashrc block terminal.sh installs, read from
+	// content so `dojo scrub --defaults` can re-seed the identical text.
+	ShellDefaults string
 }
 
 func (m *Manager) vars(ctx context.Context, node string) (*scriptVars, error) {
@@ -73,6 +76,11 @@ func (m *Manager) vars(ctx context.Context, node string) (*scriptVars, error) {
 		StudentUser:         StudentUser,
 		Kubeconfig:          AdminKubeconfig,
 	}
+	defaults, err := m.ShellDefaults()
+	if err != nil {
+		return nil, err
+	}
+	v.ShellDefaults = defaults
 	if n := m.Profile.NodeByName(node); n != nil {
 		v.Role = n.Role
 	}
@@ -83,15 +91,43 @@ func (m *Manager) vars(ctx context.Context, node string) (*scriptVars, error) {
 	return v, nil
 }
 
+// ShellDefaultsFile holds the .bashrc block that gives the student `k`, $do
+// and $now. It is one file so that provisioning and `dojo scrub --defaults`
+// cannot disagree about what the defaults are.
+const ShellDefaultsFile = "shell-defaults.bash"
+
+// ShellDefaultsMarker is the line both the provisioning guard and the scrub
+// look for to decide whether the block is already installed.
+const ShellDefaultsMarker = "# dojo shell defaults"
+
+// ShellDefaults returns the .bashrc block as content ships it.
+func (m *Manager) ShellDefaults() (string, error) {
+	raw, err := m.readProvisioningFile(ShellDefaultsFile)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(raw), "\n"), nil
+}
+
+// readProvisioningFile finds a provisioning file, preferring the profile's own
+// copy. Profiles may share the common scripts rather than copying them.
+func (m *Manager) readProvisioningFile(name string) ([]byte, error) {
+	raw, err := m.Src.Read(path.Join(m.Profile.Dir(), "provisioning", name))
+	if err == nil {
+		return raw, nil
+	}
+	raw, err = m.Src.Read(path.Join("environments", "_common", "provisioning", name))
+	if err != nil {
+		return nil, fmt.Errorf("provisioning file %s not found for profile %s", name, m.Profile.ID)
+	}
+	return raw, nil
+}
+
 // renderScript loads a provisioning template from the content root.
 func (m *Manager) renderScript(name string, v *scriptVars) (string, error) {
-	raw, err := m.Src.Read(path.Join(m.Profile.Dir(), "provisioning", name))
+	raw, err := m.readProvisioningFile(name)
 	if err != nil {
-		// Profiles may share the common scripts rather than copying them.
-		raw, err = m.Src.Read(path.Join("environments", "_common", "provisioning", name))
-		if err != nil {
-			return "", fmt.Errorf("provisioning script %s not found for profile %s", name, m.Profile.ID)
-		}
+		return "", err
 	}
 	tpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
 	if err != nil {

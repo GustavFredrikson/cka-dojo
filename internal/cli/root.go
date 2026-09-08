@@ -59,6 +59,7 @@ and grades the state you leave behind rather than the commands you type.`,
 		newSolutionCmd(app),
 		newResetCmd(app),
 		newStopCmd(app),
+		newScrubCmd(app),
 		newContentCmd(app),
 		newVersionCmd(),
 	)

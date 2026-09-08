@@ -12,6 +12,10 @@ curl -fsSL "https://pkgs.k8s.io/core:/stable:/v{{.K8sMinor}}/deb/Release.key" \
 chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{.K8sMinor}}/deb/ /" \
   > /etc/apt/sources.list.d/kubernetes.list
+# Redirection inherits the provisioning umask (077), and an apt list the
+# student cannot read makes Ubuntu's command-not-found handler print a
+# permission warning over every mistyped command.
+chmod 0644 /etc/apt/sources.list.d/kubernetes.list
 
 $APT update -qq
 
@@ -35,19 +39,22 @@ if ! command -v helm >/dev/null 2>&1; then
   rm -rf /tmp/helm.tgz "/tmp/linux-${ARCH}"
 fi
 
+# Redirection here inherits the provisioning shell's umask (077), which would
+# leave these unreadable by the student -- bash-completion silently skips a
+# file it cannot read, and the alias completion below then points at a
+# function that was never defined.
 kubectl completion bash > /etc/bash_completion.d/kubectl
 helm completion bash > /etc/bash_completion.d/helm
+chmod 0644 /etc/bash_completion.d/kubectl /etc/bash_completion.d/helm
 
-# The aliases every CKA guide tells you to set up on minute one.
+# The aliases every CKA guide tells you to set up on minute one. The block
+# lives in shell-defaults.bash so that `dojo scrub --defaults` re-seeds the
+# same text this script installs, rather than a copy that drifts from it.
 BASHRC=/home/{{.StudentUser}}/.bashrc
 if ! grep -q 'dojo shell defaults' "$BASHRC" 2>/dev/null; then
   cat >> "$BASHRC" <<'BASHRC_EOF'
 
-# dojo shell defaults
-alias k=kubectl
-complete -o default -F __start_kubectl k
-export do='--dry-run=client -o yaml'
-export now='--force --grace-period=0'
+{{.ShellDefaults}}
 BASHRC_EOF
 fi
 chown {{.StudentUser}}:{{.StudentUser}} "$BASHRC"
