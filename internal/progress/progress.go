@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gustavfredrikson/cka-dojo/internal/config"
@@ -51,12 +52,23 @@ type File struct {
 	Lessons map[string]time.Time `json:"lessons,omitempty"`
 }
 
+// fileName is the history file this process reads and writes. A development
+// run records into progress-dev.json so that dogfooding an exercise — start,
+// grade, fix, grade, reset, grade — never shows up as study the learner did.
+// See config.DevMode for why the split is here and not at DOJO_HOME.
+func fileName() string {
+	if config.DevMode() {
+		return "progress-dev.json"
+	}
+	return "progress.json"
+}
+
 func path() (string, error) {
 	home, err := config.EnsureHome()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, "progress.json"), nil
+	return filepath.Join(home, fileName()), nil
 }
 
 // Load reads progress.json, returning an empty record when absent.
@@ -112,7 +124,8 @@ func Archive(now time.Time) (string, error) {
 	}
 	backup := ""
 	if _, err := os.Stat(p); err == nil {
-		base := filepath.Join(filepath.Dir(p), "progress-"+now.UTC().Format("20060102-150405")+".json")
+		stem := strings.TrimSuffix(filepath.Base(p), ".json")
+		base := filepath.Join(filepath.Dir(p), stem+"-"+now.UTC().Format("20060102-150405")+".json")
 		backup, err = availableBackupPath(base)
 		if err != nil {
 			return "", err

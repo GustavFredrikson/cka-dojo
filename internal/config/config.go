@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -79,6 +80,40 @@ func Home() (string, error) {
 	}
 	return filepath.Join(home, ".cka-dojo"), nil
 }
+
+// DevMode reports whether this process is developing the dojo rather than
+// studying with it, which DOJO_DEV=1 declares.
+//
+// It exists because the engine cannot tell a dogfooded pass from a real one.
+// Proving that a new exercise starts, breaks and grades correctly writes the
+// same attempt record a learner's own work writes, and `recommend`, `learn`
+// and `readiness` then rank a curriculum the learner has never touched as
+// already passed. Development runs keep their own history instead; every
+// other piece of state — the cluster, its SSH keys, the active lab and the
+// lock that protects them — stays shared, because there is only one cluster.
+func DevMode() bool {
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("DOJO_DEV"))); v {
+	case "":
+		// Unset: fall through to the marker file.
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+	// A marker in the working directory turns a whole checkout into a
+	// development one. The environment variable does not survive a new shell,
+	// and a dogfooding session is hundreds of commands across many of them;
+	// forgetting the export once is all it takes to write a synthetic pass
+	// into a real history.
+	if _, err := os.Stat(DevMarker); err == nil {
+		return true
+	}
+	return false
+}
+
+// DevMarker is the file whose presence in the working directory declares a
+// development checkout. `make dogfood` creates it; `make study` removes it.
+const DevMarker = ".dojo-dev"
 
 func path(name string) (string, error) {
 	home, err := Home()

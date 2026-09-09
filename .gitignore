@@ -1,4 +1,5 @@
 /bin/
+/.dojo-dev
 /dist/
 *.test
 .DS_Store

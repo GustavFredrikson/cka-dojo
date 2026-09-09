@@ -167,3 +167,71 @@ func TestArchiveKeepsRecoverableHistoryAndStartsFresh(t *testing.T) {
 		t.Error("second archive overwrote the first")
 	}
 }
+
+// TestDevModeKeepsDogfoodingOutOfStudyHistory is the whole point of the split:
+// proving an exercise works must not tell recommend, learn or readiness that
+// the learner has practised it.
+func TestDevModeKeepsDogfoodingOutOfStudyHistory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("DOJO_HOME", home)
+
+	t.Setenv("DOJO_DEV", "")
+	real := &File{Version: 1, Labs: map[string]*Attempt{}}
+	real.StartAttempt("rbac-follow", 1, "", []string{"rbac"}, nil)
+	real.RecordGrade("rbac-follow", true, true, 27*time.Second, 0, false)
+	if err := real.Save(); err != nil {
+		t.Fatalf("save study history: %v", err)
+	}
+
+	t.Setenv("DOJO_DEV", "1")
+	dev, err := Load()
+	if err != nil {
+		t.Fatalf("load dev history: %v", err)
+	}
+	if len(dev.Labs) != 0 {
+		t.Fatalf("dev history read the study history: %d labs", len(dev.Labs))
+	}
+	dev.StartAttempt("etcd-snapshot", 2, "", []string{"etcd"}, nil)
+	dev.RecordGrade("etcd-snapshot", true, true, 10*time.Second, 0, false)
+	if err := dev.Save(); err != nil {
+		t.Fatalf("save dev history: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "progress-dev.json")); err != nil {
+		t.Fatalf("dev history was not written to progress-dev.json: %v", err)
+	}
+
+	// The dogfooded pass must be invisible to a study-mode read, and the
+	// learner's own pass must have survived it.
+	t.Setenv("DOJO_DEV", "")
+	after, err := Load()
+	if err != nil {
+		t.Fatalf("reload study history: %v", err)
+	}
+	if _, ok := after.Labs["etcd-snapshot"]; ok {
+		t.Error("a dogfooded attempt reached the study history")
+	}
+	if got := after.Get("rbac-follow").Passes; got != 1 {
+		t.Errorf("study history lost its own pass: passes = %d", got)
+	}
+}
+
+// TestDevArchiveDoesNotCollideWithStudyArchive keeps `dojo progress reset`
+// honest in both modes: each history archives under its own name.
+func TestDevArchiveDoesNotCollideWithStudyArchive(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("DOJO_HOME", home)
+	t.Setenv("DOJO_DEV", "1")
+	f := &File{Version: 1, Labs: map[string]*Attempt{}}
+	f.StartAttempt("lab-a", 7, "", nil, nil)
+	if err := f.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	backup, err := Archive(time.Date(2026, 9, 8, 7, 44, 56, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	want := filepath.Join(home, "progress-dev-20260908-074456.json")
+	if backup != want {
+		t.Errorf("backup = %q, want %q", backup, want)
+	}
+}

@@ -393,6 +393,20 @@ skills to the `skills:` list there.
 make check
 ```
 
+Then turn on dev mode, once per checkout, before running anything:
+
+```bash
+make dogfood
+```
+
+That drops a `.dojo-dev` marker so every attempt from this directory records
+to `~/.cka-dojo/progress-dev.json`. Without it, dogfooding writes the same
+attempt record a learner's own work writes, and `dojo recommend`, `dojo learn`
+and `dojo readiness` cannot tell the two apart: a synthetic pass demotes the
+exercise in the ranking and unlocks everything behind it. `DOJO_DEV=1` in the
+environment does the same thing for one command, and `make study` removes the
+marker. Every command in dev mode prints a banner saying so.
+
 Then actually run it — twice, and with `--variant` for each variant:
 
 ```bash

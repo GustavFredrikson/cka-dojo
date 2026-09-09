@@ -161,6 +161,19 @@ A learner with `sudo` on `cp1` could in principle catch a staged file in the
 window before deletion. That is an accepted limit for a self-study tool; what
 matters is that nothing is *sitting there* to stumble across.
 
+## Two study histories
+
+`~/.cka-dojo/progress.json` is the learner's history. `progress-dev.json` is
+the one development runs write, selected by `config.DevMode` — a `.dojo-dev`
+marker in the working directory, or `DOJO_DEV` in the environment.
+
+The split is at the history file and nowhere else. Everything else in
+`~/.cka-dojo` stays shared, because there is only one cluster: the generated
+SSH keys under `env/`, the active lab in `state.json`, and the lock that keeps
+two processes off the same machines. A separate `DOJO_HOME` would have split
+those too, which means a 20-minute reprovision and an SSH key the running
+machines have never authorised.
+
 ## Reset has two levels
 
 **`dojo reset`** repairs the faults, deletes the baseline objects, waits for

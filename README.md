@@ -88,7 +88,8 @@ troubleshooting and exam-style tasks.
 
 All 81 have been dogfooded on a live cluster: started, graded before the fix,
 fixed by hand, graded again, reset, and graded once more to confirm the
-scenario came back. `dojo readiness` also prints the published competencies
+scenario came back — into a separate development history, so none of it counts
+as study you did. `dojo readiness` also prints the published competencies
 with no exercise behind them at all, so a green readiness score is never
 mistaken for full coverage.
 
@@ -150,3 +151,18 @@ make validate     # content linting on its own
 
 `DOJO_CONTENT=$PWD ./bin/dojo ...` reads curriculum and environments from the
 working tree instead of the copy embedded in the binary.
+
+```bash
+make dogfood      # this checkout's attempts record to progress-dev.json
+make study        # back to your real study history
+```
+
+Dogfooding an exercise writes the same attempt record your own work writes,
+and `recommend`, `learn` and `readiness` cannot tell a synthetic pass from a
+real one. `make dogfood` leaves a `.dojo-dev` marker in the working directory
+that sends attempts to `~/.cka-dojo/progress-dev.json`; `DOJO_DEV=1` does the
+same for a single command, and `DOJO_DEV=0` overrides the marker. Commands
+running in dev mode say so on every invocation.
+
+The cluster, its SSH keys, the active lab and the lock stay shared between the
+two modes — there is only one cluster, and it takes twenty minutes to build.

@@ -26,7 +26,7 @@ and grades the state you leave behind rather than the commands you type.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return app.init()
+			return app.init(cmd.Name())
 		},
 	}
 	root.PersistentFlags().BoolVarP(new(bool), "verbose", "v", false, "show every step and command")
