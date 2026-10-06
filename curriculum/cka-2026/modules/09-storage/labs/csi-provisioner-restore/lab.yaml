@@ -1,0 +1,266 @@
+schemaVersion: 1
+id: csi-provisioner-restore
+title: Dynamic provisioning has stopped
+learningStage: contextual-fix
+prerequisites: [storage-dynamic]
+domain: [storage, cluster-architecture, troubleshooting]
+skills: [csi, dynamic-provisioning, storage-classes, persistent-volume-claims, operators]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: standard}
+
+# The provisioner belongs to the shared environment, not to this lab's
+# baseline, so no named Kubernetes fault can put it back: kubernetesPatch,
+# kubernetesDelete and kubernetesScale all have a no-op Repair and rely on
+# setup.apply recreating the object. Breaking it with one of those would leave
+# every other storage lab on this profile broken too.
+#
+# So the lab-level fault below owns the restore. It stashes the provisioner's
+# image only while the provisioner is genuinely healthy -- resetting a
+# half-finished attempt cannot enshrine a broken spec -- and its undo ends in a
+# rollout status that fails loudly rather than leaving the environment damaged
+# quietly.
+setup:
+  apply: [manifests/baseline.yaml]
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        mkdir -p /var/lib/dojo
+        ready=$(kubectl -n local-path-storage get deploy local-path-provisioner \
+          -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+        img=$(kubectl -n local-path-storage get deploy local-path-provisioner \
+          -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+        if [ "${ready:-0}" -ge 1 ] && [ -n "$img" ]; then
+          printf '%s\n' "$img" > /var/lib/dojo/local-path-image
+          echo "stashed a healthy provisioner ($img)"
+        else
+          echo "provisioner is not healthy right now; keeping any earlier stash"
+        fi
+      undo: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        img=$(cat /var/lib/dojo/local-path-image 2>/dev/null || true)
+        if [ -n "$img" ]; then
+          kubectl -n local-path-storage set image deploy/local-path-provisioner \
+            local-path-provisioner="$img" >/dev/null 2>&1 || true
+        fi
+        kubectl -n local-path-storage scale deploy/local-path-provisioner \
+          --replicas=1 >/dev/null 2>&1 || true
+        # Loudly, on purpose: every other storage lab on this profile needs
+        # this Deployment back, and a silent failure here would break them all.
+        kubectl -n local-path-storage rollout status \
+          deploy/local-path-provisioner --timeout=5m
+
+variants:
+  options:
+    # Nothing is running to act on the claim.
+    - id: provisioner-scaled-down
+      faults:
+        - type: nodeExec
+          node: cp1
+          # The claim is created after the provisioner is down, not before: the
+          # class is WaitForFirstConsumer, and a claim that already existed
+          # would bind the moment a consumer appeared.
+          script: |
+            set -euo pipefail
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n local-path-storage scale deploy/local-path-provisioner --replicas=0
+            for _ in $(seq 1 60); do
+              [ -z "$(kubectl -n local-path-storage get pods \
+                -l app=local-path-provisioner -o name)" ] && break
+              sleep 2
+            done
+            kubectl apply -f - <<'MANIFEST'
+            apiVersion: v1
+            kind: PersistentVolumeClaim
+            metadata: {name: reports, namespace: dojo-csi-provisioner-restore}
+            spec:
+              accessModes: [ReadWriteOnce]
+              storageClassName: local-path
+              resources: {requests: {storage: 128Mi}}
+            ---
+            apiVersion: v1
+            kind: Pod
+            metadata: {name: archiver, namespace: dojo-csi-provisioner-restore}
+            spec:
+              containers:
+                - name: archiver
+                  image: busybox:1.36
+                  command: [sh, -c, "echo ok > /data/marker && sleep 3600"]
+                  volumeMounts: [{name: reports, mountPath: /data}]
+              volumes:
+                - name: reports
+                  persistentVolumeClaim: {claimName: reports}
+            MANIFEST
+            # Do not hand over a scenario with no symptom.
+            sleep 10
+            phase=$(kubectl -n dojo-csi-provisioner-restore get pvc reports \
+              -o jsonpath='{.status.phase}')
+            if [ "$phase" = Bound ]; then
+              echo "the claim bound; the provisioner was still running" >&2
+              exit 1
+            fi
+            echo "claim is $phase with no provisioner running"
+          undo: |
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n dojo-csi-provisioner-restore delete pod archiver \
+              --ignore-not-found --wait=true >/dev/null 2>&1 || true
+            kubectl -n dojo-csi-provisioner-restore delete pvc reports \
+              --ignore-not-found --wait=false >/dev/null 2>&1 || true
+
+    # Something is running, and it cannot start.
+    - id: provisioner-bad-image
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            set -euo pipefail
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            # Scale to zero before changing the image, not after. A rolling
+            # update keeps the old, working Pod Ready until the new one
+            # succeeds -- and the new one never will -- so `set image` alone
+            # leaves a healthy provisioner running and the lab has no symptom.
+            kubectl -n local-path-storage scale deploy/local-path-provisioner --replicas=0
+            for _ in $(seq 1 60); do
+              [ -z "$(kubectl -n local-path-storage get pods \
+                -l app=local-path-provisioner -o name)" ] && break
+              sleep 2
+            done
+            kubectl -n local-path-storage set image deploy/local-path-provisioner \
+              local-path-provisioner=docker.io/rancher/local-path-provisioner:v0.0.0-dojo
+            kubectl -n local-path-storage scale deploy/local-path-provisioner --replicas=1
+            # Wait for the Pod to exist and stay not-ready, so the symptom is
+            # stable before the learner sees it.
+            fails=0
+            for _ in $(seq 1 60); do
+              pods=$(kubectl -n local-path-storage get pods \
+                -l app=local-path-provisioner -o name)
+              ready=$(kubectl -n local-path-storage get deploy local-path-provisioner \
+                -o jsonpath='{.status.readyReplicas}')
+              if [ -n "$pods" ] && { [ -z "$ready" ] || [ "$ready" = 0 ]; }; then
+                fails=$((fails + 1))
+                [ "$fails" -ge 3 ] && break
+              else
+                fails=0
+              fi
+              sleep 2
+            done
+            if [ "$fails" -lt 3 ]; then
+              echo "the provisioner did not settle into a failing state" >&2
+              exit 1
+            fi
+            kubectl apply -f - <<'MANIFEST'
+            apiVersion: v1
+            kind: PersistentVolumeClaim
+            metadata: {name: reports, namespace: dojo-csi-provisioner-restore}
+            spec:
+              accessModes: [ReadWriteOnce]
+              storageClassName: local-path
+              resources: {requests: {storage: 128Mi}}
+            ---
+            apiVersion: v1
+            kind: Pod
+            metadata: {name: archiver, namespace: dojo-csi-provisioner-restore}
+            spec:
+              containers:
+                - name: archiver
+                  image: busybox:1.36
+                  command: [sh, -c, "echo ok > /data/marker && sleep 3600"]
+                  volumeMounts: [{name: reports, mountPath: /data}]
+              volumes:
+                - name: reports
+                  persistentVolumeClaim: {claimName: reports}
+            MANIFEST
+            sleep 10
+            phase=$(kubectl -n dojo-csi-provisioner-restore get pvc reports \
+              -o jsonpath='{.status.phase}')
+            if [ "$phase" = Bound ]; then
+              echo "the claim bound; the provisioner was still serving" >&2
+              exit 1
+            fi
+            echo "claim is $phase with a provisioner that cannot start"
+          undo: |
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl -n dojo-csi-provisioner-restore delete pod archiver \
+              --ignore-not-found --wait=true >/dev/null 2>&1 || true
+            kubectl -n dojo-csi-provisioner-restore delete pvc reports \
+              --ignore-not-found --wait=false >/dev/null 2>&1 || true
+
+grading:
+  all:
+    - type: jsonPath
+      kind: pvc
+      name: reports
+      namespace: dojo-csi-provisioner-restore
+      path: '{.status.phase}'
+      equals: Bound
+
+    - type: command
+      description: the volume behind that claim was provisioned dynamically
+      # Provenance, not just the phase. A hand-written PersistentVolume would
+      # satisfy the claim and teach nothing; only the provisioner sets this.
+      command: |
+        set -euo pipefail
+        pv=$(kubectl -n dojo-csi-provisioner-restore get pvc reports \
+          -o jsonpath='{.spec.volumeName}')
+        test -n "$pv"
+        kubectl get pv "$pv" \
+          -o jsonpath='{.metadata.annotations.pv\.kubernetes\.io/provisioned-by}{"\n"}'
+      stdout: {equals: rancher.io/local-path}
+
+    - type: command
+      description: the provisioner is running and healthy again
+      # Not `rollout status` alone: a Deployment scaled to zero is a complete
+      # rollout and reports success, which passes the scaled-down variant
+      # without anything having been fixed. Count the ready replicas.
+      command: |
+        set -euo pipefail
+        kubectl -n local-path-storage rollout status \
+          deploy/local-path-provisioner --timeout=90s >/dev/null
+        ready=$(kubectl -n local-path-storage get deploy local-path-provisioner \
+          -o jsonpath='{.status.readyReplicas}')
+        if [ -z "$ready" ] || [ "$ready" -lt 1 ]; then
+          echo "the provisioner has no ready replicas" >&2
+          exit 1
+        fi
+        echo "provisioner ready: $ready"
+      stdout: {contains: "provisioner ready:"}
+
+    - type: command
+      description: the Pod that needed the volume is running and has written to it
+      command: |
+        set -euo pipefail
+        kubectl -n dojo-csi-provisioner-restore wait --for=condition=Ready \
+          pod/archiver --timeout=120s >/dev/null
+        kubectl -n dojo-csi-provisioner-restore exec archiver -- cat /data/marker
+      stdout: {contains: ok}
+
+hints:
+  - A claim that stays Pending is waiting for something to act on it. Kubernetes
+    does not create volumes by itself; something else does, on its behalf. Work
+    out what that is here, and whether it is running.
+  - The StorageClass the claim asks for names a provisioner. Find out which one,
+    then find what in this cluster is supposed to answer to that name.
+  - >-
+    Dynamic provisioning is a controller watching claims -- an extension, not
+    something built into the API server. Compare what the StorageClass expects
+    with what is actually running, and read the claim's events for what it says
+    it is waiting on.
+  - |
+    ```
+    kubectl -n dojo-csi-provisioner-restore describe pvc reports
+    kubectl get storageclass local-path -o yaml          # .provisioner
+    kubectl -n local-path-storage get deploy,pods
+    kubectl -n local-path-storage describe deploy local-path-provisioner
+    ```
+
+    Whatever is wrong with that Deployment, fix it there. Do not create the
+    PersistentVolume yourself -- grading checks which provisioner made it.
+
+exam: {eligible: true}
+conflicts:
+  - namespace:dojo-csi-provisioner-restore
+  - namespace:local-path-storage
+  - cluster.dynamic-provisioning

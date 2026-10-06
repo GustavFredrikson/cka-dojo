@@ -137,6 +137,14 @@ skills:
     name: kubelet
   - id: containerd
     name: Container runtime
+  # The interfaces, as distinct from the implementations above and below them.
+  # The published curriculum names these directly.
+  - id: cni
+    name: Container Network Interface
+  - id: cri
+    name: Container Runtime Interface
+  - id: csi
+    name: Container Storage Interface
   - id: node-troubleshooting
     name: Node troubleshooting
   - id: systemd

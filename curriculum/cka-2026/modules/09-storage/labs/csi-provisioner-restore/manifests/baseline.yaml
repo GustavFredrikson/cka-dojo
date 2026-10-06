@@ -1,0 +1,7 @@
+# The namespace only. The claim and its Pod are created inside the variant
+# fault, after the provisioner is down: local-path binds
+# WaitForFirstConsumer, so a claim applied here would bind before the fault
+# landed and there would be no symptom.
+apiVersion: v1
+kind: Namespace
+metadata: {name: dojo-csi-provisioner-restore}

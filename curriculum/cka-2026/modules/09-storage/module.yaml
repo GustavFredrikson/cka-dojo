@@ -8,6 +8,7 @@ labs:
   - storage-follow
   - storage-build
   - storage-dynamic
+  - csi-provisioner-restore
   - storage-reclaim
   - storage-inspect
   - storage-guided-pending

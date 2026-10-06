@@ -1,0 +1,105 @@
+schemaVersion: 1
+id: cri-inspect
+title: What the kubelet actually talks to
+learningStage: inspect
+prerequisites: [controlplane-static-pod]
+domain: [cluster-architecture, troubleshooting]
+skills: [cri, containerd, kubelet, control-plane-components, node-troubleshooting]
+difficulty: 2
+targetMinutes: 10
+environment: {profile: standard}
+
+# No faults at all. This one is read-only by construction, which is what makes
+# it safe to run on a shared environment and infinitely resettable -- and it is
+# the rung the diagnose-stage control-plane labs assume you have climbed, since
+# `crictl` is the only way to see anything when the API server is down.
+setup: {}
+
+checkpoints:
+  - id: endpoint
+    task: |
+      `crictl` needs to be told which runtime to talk to, and on this node it
+      is configured rather than guessed. Which file holds that configuration?
+      Give the absolute path.
+    answer:
+      accepted: ["/etc/crictl.yaml", "/etc/crictl.yml"]
+      caseInsensitive: true
+
+  - id: socket
+    task: |
+      Read that file. Which socket does it point `crictl` at? Give the path
+      only, without the `unix://` scheme.
+    answer:
+      accepted:
+        - "/run/containerd/containerd.sock"
+        - "/var/run/containerd/containerd.sock"
+      caseInsensitive: true
+
+  - id: runtime-version
+    task: |
+      The API server knows which runtime this node runs, because the kubelet
+      told it. Read it off the Node object -- `.status.nodeInfo` has a field
+      for it. What does it report, in full?
+    answer:
+      accepted: ["containerd://2.3.5"]
+      caseInsensitive: true
+
+  - id: sandbox-count
+    task: |
+      Compare `crictl pods` with `crictl ps`. There are more of the first than
+      the second. What is the extra thing `crictl pods` lists -- the object
+      that holds a Pod's network namespace and that every Pod has exactly one
+      of? One word.
+    answer:
+      accepted: ["sandbox", "podsandbox", "pod sandbox", "sandboxes", "pause"]
+      caseInsensitive: true
+
+  - id: sandbox-image
+    task: |
+      That object runs a real image, and containerd is told which one in
+      `/etc/containerd/config.toml`. Which image is it? Give it with its tag.
+    answer:
+      accepted:
+        - "registry.k8s.io/pause:3.10.1"
+        - "pause:3.10.1"
+      caseInsensitive: true
+
+  - id: cgroup-driver
+    task: |
+      containerd and the kubelet must agree on one setting, or Pods start and
+      then die in ways that look like anything but the real cause. Read
+      `cgroupDriver` from `/var/lib/kubelet/config.yaml`. What is it set to?
+    answer:
+      accepted: ["systemd"]
+      caseInsensitive: true
+
+  - id: survives-outage
+    task: |
+      Of `kubectl`, `crictl` and `ctr`, exactly one stops working when the API
+      server is down -- and that is why the other two matter for
+      troubleshooting. Which one stops working?
+    answer:
+      accepted: ["kubectl"]
+      caseInsensitive: true
+
+grading:
+  all:
+    - type: command
+      target: cp1
+      description: crictl is configured and answering on cp1
+      command: crictl version
+      stdout: {contains: containerd}
+    - type: nodeService
+      node: cp1
+      unit: containerd
+      state: active
+      enabled: true
+    # Nothing here should have changed anything.
+    - type: command
+      target: cp1
+      description: the node is still healthy
+      command: kubectl get --raw=/readyz
+      stdout: {contains: ok}
+
+exam: {eligible: false}
+conflicts: []
