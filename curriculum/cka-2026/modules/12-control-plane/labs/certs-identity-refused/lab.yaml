@@ -1,0 +1,301 @@
+schemaVersion: 1
+id: certs-identity-refused
+title: This account cannot do anything
+learningStage: diagnose
+prerequisites: [certs-expired-kubeconfig, kubeconfig-repair]
+domain: [cluster-architecture, troubleshooting]
+skills: [certificates, certificate-renewal, kubeconfig, kubeadm, rbac, authorization-checks]
+difficulty: 4
+targetMinutes: 16
+environment: {profile: standard}
+
+# Three credentials that fail in three different places and look alike from the
+# workstation. Two return 401 and one returns 403; telling those apart, and then
+# telling the two 401s apart, is the whole exercise.
+#
+# Every grader description here is deliberately unspecific. `dojo grade` prints
+# all of them on the first attempt whether they passed or not, so a description
+# that named the fault would hand over the diagnosis for free.
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-certs-identity-refused, kind: deployment, name: invoices}
+  faults:
+    # Lab-level: clear both ends, and drop a helper that wraps whatever
+    # certificate a variant mints into a kubeconfig. The three variants differ
+    # only in how the certificate is produced, so only that part is per-variant.
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        d=/var/lib/dojo/certs-identity
+        rm -rf "$d"
+        mkdir -p "$d"
+        cat > "$d/write-kubeconfig.sh" <<'HELPER'
+        set -euo pipefail
+        d=/var/lib/dojo/certs-identity
+        server=$(awk '/server:/ {print $2; exit}' /etc/kubernetes/admin.conf)
+        cat > "$d/billing.kubeconfig" <<EOF
+        apiVersion: v1
+        kind: Config
+        clusters:
+          - name: kubernetes
+            cluster:
+              server: ${server}
+              certificate-authority-data: $(base64 -w0 /etc/kubernetes/pki/ca.crt)
+        users:
+          - name: dojo-billing
+            user:
+              client-certificate-data: $(base64 -w0 "$d/billing.crt")
+              client-key-data: $(base64 -w0 "$d/billing.key")
+        contexts:
+          - name: dojo-billing@kubernetes
+            context: {cluster: kubernetes, user: dojo-billing}
+        current-context: dojo-billing@kubernetes
+        EOF
+        chmod 0644 "$d/billing.kubeconfig"
+        HELPER
+        echo "staging directory is ready"
+      undo: |
+        rm -rf /var/lib/dojo/certs-identity || true
+    - type: nodeExec
+      node: terminal
+      script: |
+        set -euo pipefail
+        rm -f /home/student/billing.kubeconfig
+        echo "workstation is clean"
+      undo: |
+        rm -f /home/student/billing.kubeconfig /home/student/billing.key \
+              /home/student/billing.crt /home/student/billing.csr || true
+
+variants:
+  options:
+    # 401. Right subject, right issuer, and it stopped being valid yesterday.
+    - id: expired-cert
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            set -euo pipefail
+            d=/var/lib/dojo/certs-identity
+            umask 022
+            openssl genrsa -out "$d/billing.key" 2048 2>/dev/null
+            openssl req -new -key "$d/billing.key" -out "$d/billing.csr" \
+              -subj "/CN=dojo-billing/O=dojo-billing"
+            openssl x509 -req -in "$d/billing.csr" \
+              -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+              -CAcreateserial -days -1 -out "$d/billing.crt" 2>/dev/null
+            if openssl x509 -in "$d/billing.crt" -noout -checkend 0 >/dev/null 2>&1; then
+              echo "the minted certificate is not expired; -days -1 was not honoured" >&2
+              exit 1
+            fi
+            bash "$d/write-kubeconfig.sh"
+            echo "minted an expired credential"
+          undo: 'true'
+        - type: nodeExec
+          node: terminal
+          script: |
+            set -euo pipefail
+            runuser -u student -- env HOME=/home/student ssh \
+              -i /home/student/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              cp1 'sudo cat /var/lib/dojo/certs-identity/billing.kubeconfig' \
+              > /home/student/billing.kubeconfig
+            test -s /home/student/billing.kubeconfig
+            chown student:student /home/student/billing.kubeconfig
+            chmod 0600 /home/student/billing.kubeconfig
+            echo "installed"
+          undo: 'true'
+
+    # 401 as well, for a different reason: a perfectly valid certificate with
+    # the right subject, signed by an authority the cluster has never heard of.
+    - id: foreign-ca
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            set -euo pipefail
+            d=/var/lib/dojo/certs-identity
+            umask 022
+            openssl genrsa -out "$d/rogue-ca.key" 2048 2>/dev/null
+            openssl req -x509 -new -nodes -key "$d/rogue-ca.key" -sha256 -days 3650 \
+              -subj "/CN=not-the-cluster-ca" -out "$d/rogue-ca.crt" 2>/dev/null
+            openssl genrsa -out "$d/billing.key" 2048 2>/dev/null
+            openssl req -new -key "$d/billing.key" -out "$d/billing.csr" \
+              -subj "/CN=dojo-billing/O=dojo-billing"
+            openssl x509 -req -in "$d/billing.csr" \
+              -CA "$d/rogue-ca.crt" -CAkey "$d/rogue-ca.key" \
+              -CAcreateserial -days 365 -out "$d/billing.crt" 2>/dev/null
+            # Must not be expired: the point is that it is impeccable and still
+            # refused.
+            openssl x509 -in "$d/billing.crt" -noout -checkend 86400 >/dev/null
+            bash "$d/write-kubeconfig.sh"
+            echo "minted a credential from a foreign authority"
+          undo: 'true'
+        - type: nodeExec
+          node: terminal
+          script: |
+            set -euo pipefail
+            runuser -u student -- env HOME=/home/student ssh \
+              -i /home/student/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              cp1 'sudo cat /var/lib/dojo/certs-identity/billing.kubeconfig' \
+              > /home/student/billing.kubeconfig
+            test -s /home/student/billing.kubeconfig
+            chown student:student /home/student/billing.kubeconfig
+            chmod 0600 /home/student/billing.kubeconfig
+            echo "installed"
+          undo: 'true'
+
+    # 403, not 401. The credential is valid and the cluster accepts it -- as
+    # somebody nobody has granted anything to.
+    - id: subject-typo
+      faults:
+        - type: nodeExec
+          node: cp1
+          script: |
+            set -euo pipefail
+            d=/var/lib/dojo/certs-identity
+            umask 022
+            openssl genrsa -out "$d/billing.key" 2048 2>/dev/null
+            openssl req -new -key "$d/billing.key" -out "$d/billing.csr" \
+              -subj "/CN=dojo-b1lling/O=dojo-billing"
+            openssl x509 -req -in "$d/billing.csr" \
+              -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+              -CAcreateserial -days 365 -out "$d/billing.crt" 2>/dev/null
+            openssl x509 -in "$d/billing.crt" -noout -checkend 86400 >/dev/null
+            bash "$d/write-kubeconfig.sh"
+            echo "minted a credential for the wrong subject"
+          undo: 'true'
+        - type: nodeExec
+          node: terminal
+          script: |
+            set -euo pipefail
+            runuser -u student -- env HOME=/home/student ssh \
+              -i /home/student/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              cp1 'sudo cat /var/lib/dojo/certs-identity/billing.kubeconfig' \
+              > /home/student/billing.kubeconfig
+            test -s /home/student/billing.kubeconfig
+            chown student:student /home/student/billing.kubeconfig
+            chmod 0600 /home/student/billing.kubeconfig
+            echo "installed"
+          undo: 'true'
+
+grading:
+  all:
+    - type: command
+      target: terminal
+      description: the billing account is itself again
+      # The username exactly, not a substring of the whole table: `auth whoami`
+      # also prints the groups, and a certificate whose O is right and whose CN
+      # is wrong would otherwise match on the group line.
+      command: |
+        set -euo pipefail
+        who=$(runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig /home/student/billing.kubeconfig \
+          auth whoami -o jsonpath='{.status.userInfo.username}')
+        if [ "$who" != "dojo-billing" ]; then
+          echo "the credential authenticates as \"$who\"" >&2
+          exit 1
+        fi
+        echo "identity confirmed"
+      stdout: {contains: identity confirmed}
+
+    - type: command
+      target: terminal
+      description: the credential it presents will still be good tomorrow
+      command: |
+        set -euo pipefail
+        cfg=/home/student/billing.kubeconfig
+        view() { runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig "$cfg" config view --raw --minify -o "jsonpath=$1"; }
+        crt=$(mktemp)
+        data=$(view '{.users[0].user.client-certificate-data}')
+        if [ -n "$data" ]; then
+          printf '%s' "$data" | base64 -d > "$crt"
+        else
+          path=$(view '{.users[0].user.client-certificate}')
+          test -n "$path"
+          cp "$path" "$crt"
+        fi
+        openssl x509 -in "$crt" -noout -checkend 86400
+        rm -f "$crt"
+      stdout: {contains: "will not expire"}
+
+    - type: command
+      target: terminal
+      description: it can do the work it is there to do
+      command: |
+        set -euo pipefail
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig /home/student/billing.kubeconfig \
+          -n dojo-certs-identity-refused get deploy -o name
+      stdout: {contains: deployment.apps/invoices}
+
+    - type: command
+      target: terminal
+      description: and no more than that
+      command: |
+        set -euo pipefail
+        cfg=/home/student/billing.kubeconfig
+        run() { runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig "$cfg" "$@"; }
+        test "$(run -n dojo-certs-identity-refused auth can-i delete deployments)" = no
+        test "$(run -n kube-system auth can-i get secrets)" = no
+        test "$(run auth can-i create clusterrolebindings)" = no
+        echo "correctly scoped"
+      stdout: {contains: correctly scoped}
+
+    - type: command
+      target: cp1
+      description: the cluster was not altered to accommodate it
+      # Rebinding the Role to whatever name the credential happens to carry
+      # would make the third check pass without fixing anything. It is not a fix.
+      command: |
+        set -euo pipefail
+        subjects=$(kubectl -n dojo-certs-identity-refused get rolebinding billing \
+          -o jsonpath='{.subjects[*].name}')
+        test "$subjects" = "dojo-billing"
+        if kubectl get clusterrolebinding -o jsonpath='{.items[*].subjects[*].name}' \
+             | tr ' ' '\n' | grep -qx 'dojo-billing'; then
+          echo "the account was granted cluster-wide rights it should not have" >&2
+          exit 1
+        fi
+        echo "authorization is unchanged"
+      stdout: {contains: authorization is unchanged}
+
+hints:
+  - Separate "the cluster does not know who you are" from "the cluster knows who
+    you are and will not let you do that". Those are different responses to
+    different problems, and the error text tells you which one you have.
+  - >-
+    Whatever the answer, it is in the credential. Pull the client certificate
+    out of `~/billing.kubeconfig` and read all of it -- subject, issuer, and both
+    dates: `kubectl config view --raw --minify`, then
+    `base64 -d | openssl x509 -noout -subject -issuer -dates`. Compare what you
+    find against `/etc/kubernetes/pki/ca.crt` on cp1.
+  - >-
+    The API server logs why it rejected a credential, which is more than it
+    tells the client. On cp1:
+    `sudo crictl logs $(sudo crictl ps -q --name kube-apiserver) 2>&1 | tail -40`.
+    If nothing about this account appears there at all, that itself narrows it
+    down -- one of these three failures never reaches the authenticator.
+  - |
+    All three end the same way: the cluster CA signs a new certificate with the
+    right subject, and it goes into the same kubeconfig.
+
+    ```
+    ssh cp1 'sudo kubeadm kubeconfig user --client-name dojo-billing \
+      --org dojo-billing --validity-period 720h' > ~/billing.kubeconfig
+    chmod 600 ~/billing.kubeconfig
+    ```
+
+    Leave the Role and the RoleBinding alone. They are correct, and grading
+    checks that they still are.
+
+exam: {eligible: true}
+conflicts:
+  - namespace:dojo-certs-identity-refused
+  - terminal.path:/home/student/billing.kubeconfig
+  - cp1.path:/var/lib/dojo/certs-identity

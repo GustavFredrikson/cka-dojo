@@ -1,0 +1,211 @@
+schemaVersion: 1
+id: certs-expired-kubeconfig
+title: An expired client certificate
+learningStage: guided-fix
+prerequisites: [certs-expiration, rbac-csr]
+domain: [cluster-architecture, troubleshooting]
+skills: [certificates, certificate-renewal, kubeconfig, kubeadm, rbac, authorization-checks]
+difficulty: 3
+targetMinutes: 14
+environment: {profile: standard}
+
+# The cluster's own certificates are valid for a year and there is no supported
+# way to backdate them, which is why nothing here touches them. What expires
+# instead is a client certificate this lab mints against the same CA with a
+# notAfter in the past -- expired on arrival, dependent on nothing, and undone
+# by deleting two files. That is the whole resettability story.
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-certs-expired-kubeconfig, kind: deployment, name: ledger}
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        set -euo pipefail
+        d=/var/lib/dojo/certs-expired
+        rm -rf "$d"
+        mkdir -p "$d"
+        umask 022
+        openssl genrsa -out "$d/ops.key" 2048 2>/dev/null
+        openssl req -new -key "$d/ops.key" -out "$d/ops.csr" \
+          -subj "/CN=dojo-operator/O=dojo-operators"
+        # OpenSSL reads -days -1 as "expired yesterday". It is the one spelling
+        # available here: -not_after arrived in OpenSSL 3.2 and Ubuntu 24.04
+        # ships 3.0.
+        openssl x509 -req -in "$d/ops.csr" \
+          -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+          -CAcreateserial -days -1 -out "$d/ops.crt" 2>/dev/null
+        # Refuse to hand over a lab with no symptom. If a future OpenSSL stops
+        # honouring a negative -days, fail setup loudly rather than give the
+        # learner a credential that already works.
+        if openssl x509 -in "$d/ops.crt" -noout -checkend 0 >/dev/null 2>&1; then
+          echo "the minted certificate is not expired; -days -1 was not honoured" >&2
+          exit 1
+        fi
+        server=$(awk '/server:/ {print $2; exit}' /etc/kubernetes/admin.conf)
+        cat > "$d/ops.kubeconfig" <<EOF
+        apiVersion: v1
+        kind: Config
+        clusters:
+          - name: kubernetes
+            cluster:
+              server: ${server}
+              certificate-authority-data: $(base64 -w0 /etc/kubernetes/pki/ca.crt)
+        users:
+          - name: dojo-operator
+            user:
+              client-certificate-data: $(base64 -w0 "$d/ops.crt")
+              client-key-data: $(base64 -w0 "$d/ops.key")
+        contexts:
+          - name: dojo-operator@kubernetes
+            context: {cluster: kubernetes, user: dojo-operator}
+        current-context: dojo-operator@kubernetes
+        EOF
+        chmod 0644 "$d/ops.kubeconfig"
+        echo "minted an expired credential for dojo-operator"
+      undo: |
+        rm -rf /var/lib/dojo/certs-expired
+
+    - type: nodeExec
+      node: terminal
+      # Pull it across the way the account's owner would have. The engine runs
+      # this from a file with stdin closed, so ssh inside it is safe.
+      script: |
+        set -euo pipefail
+        rm -f /home/student/ops.kubeconfig
+        runuser -u student -- env HOME=/home/student ssh \
+          -i /home/student/.ssh/id_ed25519 \
+          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+          cp1 'sudo cat /var/lib/dojo/certs-expired/ops.kubeconfig' \
+          > /home/student/ops.kubeconfig
+        test -s /home/student/ops.kubeconfig
+        grep -q 'client-certificate-data' /home/student/ops.kubeconfig
+        chown student:student /home/student/ops.kubeconfig
+        chmod 0600 /home/student/ops.kubeconfig
+        echo "installed ops.kubeconfig on the workstation"
+      undo: |
+        rm -f /home/student/ops.kubeconfig /home/student/ops.key \
+              /home/student/ops.crt /home/student/ops.csr || true
+
+grading:
+  all:
+    - type: command
+      target: terminal
+      description: ~/ops.kubeconfig authenticates as dojo-operator, not as an administrator
+      # The username exactly, not a substring of the whole table: `auth whoami`
+      # also prints the groups, and this identity's O (dojo-operators) contains
+      # its CN, so a substring match would accept the wrong certificate.
+      command: |
+        set -euo pipefail
+        who=$(runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig /home/student/ops.kubeconfig \
+          auth whoami -o jsonpath='{.status.userInfo.username}')
+        if [ "$who" != "dojo-operator" ]; then
+          echo "the credential authenticates as \"$who\"" >&2
+          exit 1
+        fi
+        echo "identity is dojo-operator"
+      stdout: {contains: identity is dojo-operator}
+
+    - type: command
+      target: terminal
+      description: the certificate that kubeconfig presents is valid for at least another day
+      # --minify follows current-context, so leaving the expired credential in
+      # a second, unselected user entry does not pass.
+      command: |
+        set -euo pipefail
+        cfg=/home/student/ops.kubeconfig
+        view() { runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig "$cfg" config view --raw --minify -o "jsonpath=$1"; }
+        crt=$(mktemp)
+        data=$(view '{.users[0].user.client-certificate-data}')
+        if [ -n "$data" ]; then
+          printf '%s' "$data" | base64 -d > "$crt"
+        else
+          path=$(view '{.users[0].user.client-certificate}')
+          test -n "$path"
+          cp "$path" "$crt"
+        fi
+        openssl x509 -in "$crt" -noout -checkend 86400
+        rm -f "$crt"
+      stdout: {contains: "will not expire"}
+
+    - type: command
+      target: terminal
+      description: that identity can list the Deployments it is responsible for
+      command: |
+        set -euo pipefail
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig /home/student/ops.kubeconfig \
+          -n dojo-certs-expired-kubeconfig get deploy -o name
+      stdout: {contains: deployment.apps/ledger}
+
+    - type: command
+      target: terminal
+      description: and is still refused everything it was never meant to have
+      command: |
+        set -euo pipefail
+        cfg=/home/student/ops.kubeconfig
+        run() { runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl --kubeconfig "$cfg" "$@"; }
+        test "$(run -n dojo-certs-expired-kubeconfig auth can-i delete pods)" = no
+        test "$(run -n kube-system auth can-i get secrets)" = no
+        test "$(run auth can-i create clusterrolebindings)" = no
+        echo "correctly scoped"
+      stdout: {contains: correctly scoped}
+
+    - type: command
+      target: cp1
+      description: the cluster's own certificates were left alone
+      command: |
+        set -euo pipefail
+        kubeadm certs check-expiration | grep -c 'no' >/dev/null || true
+        if kubeadm certs check-expiration | grep -qi 'invalid\|expired'; then
+          echo "a kubeadm-managed certificate is no longer valid" >&2
+          exit 1
+        fi
+        echo "kubeadm certificates are intact"
+      stdout: {contains: kubeadm certificates are intact}
+
+hints:
+  - The cluster is healthy and the RBAC that grants this account its access is
+    exactly as it was. What the API server is refusing is the credential
+    itself -- and a credential in a kubeconfig is a certificate, with dates on it.
+  - >-
+    Get the client certificate out of `~/ops.kubeconfig` and read it.
+    `kubectl config view --raw --minify` will show you the base64, and
+    `base64 -d | openssl x509 -noout -subject -dates` will tell you the rest.
+    The API server logs the real reason too, if you go and look on cp1.
+  - >-
+    A certificate cannot be extended. The cluster CA has to sign a new one with
+    the same subject -- same CN, same O -- and that new certificate has to go
+    into the same kubeconfig. The CA is on cp1 and you have root there. Leave
+    the cluster's own certificates alone; only this account's is wrong.
+  - |
+    Three routes, all accepted. The short one:
+
+    ```
+    ssh cp1 'sudo kubeadm kubeconfig user --client-name dojo-operator \
+      --org dojo-operators --validity-period 720h' > ~/ops.kubeconfig
+    chmod 600 ~/ops.kubeconfig
+    ```
+
+    By hand on cp1, if you would rather see every step:
+
+    ```
+    openssl genrsa -out ops.key 2048
+    openssl req -new -key ops.key -out ops.csr -subj "/CN=dojo-operator/O=dojo-operators"
+    sudo openssl x509 -req -in ops.csr -CA /etc/kubernetes/pki/ca.crt \
+      -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -days 365 -out ops.crt
+    ```
+
+    Or through the API, the way `rbac-csr` taught you: a
+    CertificateSigningRequest with signer `kubernetes.io/kube-apiserver-client`,
+    approved, then `kubectl config set-credentials --embed-certs`.
+
+exam: {eligible: true}
+conflicts:
+  - namespace:dojo-certs-expired-kubeconfig
+  - terminal.path:/home/student/ops.kubeconfig
+  - cp1.path:/var/lib/dojo/certs-expired

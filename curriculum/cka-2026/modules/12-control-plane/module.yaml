@@ -9,7 +9,10 @@ labs:
   - controlplane-scheduler
   - cri-inspect
   - certs-expiration
+  - certs-kubeadm-renew
   - kubeconfig-repair
+  - certs-expired-kubeconfig
+  - certs-identity-refused
   - etcd-snapshot
   - etcd-restore
   - etcd-unreachable

@@ -161,6 +161,10 @@ skills:
     name: etcd backup and restore
   - id: certificates
     name: Cluster certificates
+  - id: certificate-renewal
+    name: Certificate renewal
+  - id: kubeadm
+    name: kubeadm
   - id: kubeconfig
     name: kubeconfig files
   - id: helm
@@ -223,14 +227,6 @@ knownGaps:
     name: Highly-available control plane
     domain: cluster-architecture
     note: Waiting on the ha environment profile.
-  - id: certificate-rotation
-    name: Certificate expiry and renewal
-    domain: cluster-architecture
-    note: >-
-      `certs-expiration` reads expiry dates and `kubeconfig-repair` rebuilds a
-      broken kubeconfig, but no lab expires a certificate and makes the learner
-      renew it: kubeadm certificates are valid for a year and there is no
-      supported way to backdate them.
   - id: extension-interfaces
     name: Extension interfaces (CNI, CSI, CRI)
     domain: cluster-architecture

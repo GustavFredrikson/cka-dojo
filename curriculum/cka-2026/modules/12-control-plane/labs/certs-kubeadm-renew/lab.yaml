@@ -1,0 +1,158 @@
+schemaVersion: 1
+id: certs-kubeadm-renew
+title: Renew the cluster's own certificates
+learningStage: build
+prerequisites: [certs-expiration]
+domain: [cluster-architecture]
+skills: [certificates, certificate-renewal, kubeadm, control-plane-components, static-pods]
+difficulty: 3
+targetMinutes: 16
+environment: {profile: standard}
+
+# Nothing is broken here: this is the maintenance operation itself, done on a
+# healthy cluster. Renewal cannot be undone, which would normally make the lab
+# one-shot -- so grading compares against a baseline the fault records at setup
+# rather than against a fixed date. On reset the fault re-records the dates the
+# learner just produced, and renewing again is always possible.
+setup:
+  faults:
+    - type: nodeExec
+      node: cp1
+      # Serial numbers, not expiry dates. A renewal always mints a new serial,
+      # so the comparison is exact; two renewals a few seconds apart would
+      # produce notAfter values that differ by seconds and could round together.
+      script: |
+        set -euo pipefail
+        mkdir -p /var/lib/dojo
+        : > /var/lib/dojo/certs-renew-before
+        for f in apiserver apiserver-kubelet-client front-proxy-client; do
+          s=$(openssl x509 -in "/etc/kubernetes/pki/$f.crt" -noout -serial | cut -d= -f2)
+          printf '%s %s\n' "$f" "$s" >> /var/lib/dojo/certs-renew-before
+        done
+        echo "recorded the serials of $(wc -l < /var/lib/dojo/certs-renew-before) certificates"
+      undo: |
+        rm -f /var/lib/dojo/certs-renew-before || true
+
+grading:
+  all:
+    - type: command
+      target: cp1
+      description: every kubeadm-managed certificate was reissued, not just left alone
+      command: |
+        set -euo pipefail
+        test -s /var/lib/dojo/certs-renew-before
+        while read -r f before; do
+          now=$(openssl x509 -in "/etc/kubernetes/pki/$f.crt" -noout -serial | cut -d= -f2)
+          if [ "$now" = "$before" ]; then
+            echo "$f is still the certificate it was" >&2
+            exit 1
+          fi
+        done < /var/lib/dojo/certs-renew-before
+        echo "all three certificates were reissued"
+      stdout: {contains: all three certificates were reissued}
+
+    - type: command
+      target: cp1
+      description: none of them expires within the next 300 days
+      command: |
+        set -euo pipefail
+        for f in apiserver apiserver-kubelet-client apiserver-etcd-client front-proxy-client; do
+          if ! openssl x509 -in "/etc/kubernetes/pki/$f.crt" -noout \
+               -checkend $((300 * 86400)) >/dev/null; then
+            echo "$f expires within 300 days" >&2
+            exit 1
+          fi
+        done
+        echo "all freshly issued"
+      stdout: {contains: all freshly issued}
+
+    - type: command
+      target: cp1
+      description: the control-plane components are running on the new material, not the old
+      # Not "does the API server serve the new certificate": it hot-reloads its
+      # serving certificate on its own, so that check can never fail and would
+      # teach nothing. What is genuinely read once at startup is the API
+      # server's client certificates to etcd and the kubelets, and the
+      # kubeconfigs the scheduler and controller-manager authenticate with. So
+      # the thing to assert is that the containers were restarted after the
+      # files were rewritten.
+      command: |
+        set -euo pipefail
+        cert_ns=$(( $(stat -c %Y /etc/kubernetes/pki/apiserver.crt) * 1000000000 ))
+        for c in kube-apiserver kube-controller-manager kube-scheduler; do
+          started=""
+          for _ in $(seq 1 60); do
+            started=$(crictl ps --name "$c" -o json 2>/dev/null \
+              | jq -r '.containers[0].createdAt // empty' 2>/dev/null || true)
+            [ -n "$started" ] && break
+            sleep 2
+          done
+          if [ -z "$started" ]; then
+            echo "$c is not running" >&2
+            exit 1
+          fi
+          if [ "$started" -le "$cert_ns" ]; then
+            echo "$c has been running since before the certificates were rewritten" >&2
+            exit 1
+          fi
+        done
+        echo "the control plane restarted after renewal"
+      stdout: {contains: the control plane restarted after renewal}
+
+    - type: command
+      target: cp1
+      description: and the control plane is healthy afterwards
+      command: kubectl get --raw=/readyz
+      stdout: {contains: ok}
+
+    - type: command
+      target: terminal
+      description: your own kubeconfig still reaches the cluster
+      command: |
+        set -euo pipefail
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl get nodes -o name
+      stdout: {contains: node/cp1}
+
+hints:
+  - kubeadm manages these certificates and can reissue them. You read their
+    dates in an earlier exercise with a `kubeadm certs` subcommand; there is a
+    sibling subcommand that renews rather than reports.
+  - >-
+    Renewing rewrites the files under `/etc/kubernetes/pki` and the kubeconfigs
+    in `/etc/kubernetes`. Read what the command tells you when it finishes --
+    it names, explicitly, a second thing you have to do.
+  - >-
+    The control-plane components are static Pods. kubelet restarts one when its
+    manifest in `/etc/kubernetes/manifests` changes, and renewal does not touch
+    those manifests, so nothing happens on its own. Make kubelet notice, and use
+    `crictl ps` to watch the containers actually go away and come back.
+  - |
+    On cp1:
+
+    ```
+    sudo kubeadm certs renew all
+    sudo kubeadm certs check-expiration
+    ```
+
+    Then make kubelet restart the control-plane Pods. Moving the manifests out
+    and back is the usual way:
+
+    ```
+    sudo mv /etc/kubernetes/manifests /etc/kubernetes/manifests.off
+    sleep 20
+    sudo mv /etc/kubernetes/manifests.off /etc/kubernetes/manifests
+    ```
+
+    `systemctl restart kubelet` is **not** enough: kubelet reconciles against
+    what the runtime is already running, finds Pods whose manifests have not
+    changed, and leaves them alone. Confirm the containers are genuinely new:
+
+    ```
+    sudo crictl ps --name kube-apiserver
+    ```
+
+exam: {eligible: true}
+conflicts:
+  - cluster.certificates
+  - cp1.path:/etc/kubernetes/pki
