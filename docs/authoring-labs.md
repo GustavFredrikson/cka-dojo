@@ -80,18 +80,47 @@ StatefulSets and DaemonSets, and there is nothing for it to wait on for a bare
 Pod, a Job or a Service — `rollout status pod/x` is an error, not a wait. A lab
 whose baseline is a single Pod simply omits `waitReady`.
 
-## Two things about fault scripts
+*A named Kubernetes fault cannot put back an object the lab does not own.*
+`kubernetesPatch`, `kubernetesDelete` and `kubernetesScale` all have a no-op
+`Repair` (`internal/fault/kubernetes.go`): they are undoable only because
+reset re-applies `setup.apply` afterwards. Point one at something the lab did
+not ship — the local-path provisioner, a kube-system Deployment, anything
+shared — and the change is permanent, for every later lab on that profile too.
+Break shared components with a `nodeExec` that stashes the original state
+conditionally and restores it in `undo`. Nothing in `content validate` catches
+this.
 
-*`nodeExec` scripts do not get `set -e`.* They run as `bash <file>` with stdin
-closed, so a command that fails in the middle is ignored and only the last
-exit code reaches the engine — a setup that half-worked reports success and
-hands the learner an unsolvable task. Start every `script:` with
-`set -euo pipefail`. Start every `undo:` with `set -uo pipefail` instead:
-teardown should keep going and clean up what it can.
+## Three things about fault scripts
 
-Stdin being closed is deliberate (a script read from stdin would have its tail
-swallowed by the first command that reads stdin). A heredoc *inside* the script
-is unaffected, so `kubectl apply -f - <<'EOF'` works normally.
+*`nodeExec` scripts get `set -euo pipefail` whether you write it or not* — and
+so does `undo`. The engine prepends it to both (`internal/fault/node.go`).
+Writing `set -euo pipefail` at the top of a `script:` is therefore harmless and
+still worth doing, because it says out loud what the script is running under.
+
+What this means for `undo` is less obvious and matters more: teardown runs
+under `errexit` too, so the first command that fails abandons the rest of the
+cleanup. Writing `set -uo pipefail` on line 1 of an `undo:` *does* turn
+`errexit` back off — but do not rely on reading it that way. Guard the commands
+that are allowed to fail explicitly:
+
+```yaml
+undo: |
+  systemctl start kubelet || true
+  rm -f /var/lib/dojo/marker
+```
+
+*`command` graders get no `set -e` at all.* The grader builds only
+`export KUBECONFIG=…` followed by your command (`internal/grader/node.go`), so
+in a multi-line `command:` every exit code but the last is discarded. Start
+multi-line grading commands with `set -euo pipefail`, and give every `command`
+check a `stdout:` match — the exec error is discarded too, and a zero-value
+result has exit code 0, so a check with neither `stdout:` nor `exitCode:`
+passes green when it never ran.
+
+Stdin is closed for all of these, which is deliberate (a script read from stdin
+would have its tail swallowed by the first command that reads stdin). A heredoc
+*inside* the script is unaffected, so `kubectl apply -f - <<'EOF'` works
+normally.
 
 *An `undo` that restores a backup must not be able to enshrine a broken
 state.* `reset` is teardown followed by setup, so a `script:` that
