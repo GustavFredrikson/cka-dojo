@@ -36,7 +36,7 @@ func newEnvStatusCmd(app *App) *cobra.Command {
 		Use:   "status",
 		Short: "Show the current environment's machines",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			m, err := app.Manager("")
+			m, err := app.CurrentManager()
 			if err != nil {
 				return err
 			}
@@ -147,7 +147,7 @@ func newEnvStopCmd(app *App) *cobra.Command {
 				return err
 			}
 			defer lock.Release()
-			m, err := app.Manager("")
+			m, err := app.CurrentManager()
 			if err != nil {
 				return err
 			}
@@ -176,7 +176,7 @@ bottomless engineering problem. When the cluster is beyond saving, rebuild it.`,
 				return err
 			}
 			defer lock.Release()
-			m, err := app.Manager("")
+			m, err := app.CurrentManager()
 			if err != nil {
 				return err
 			}
@@ -184,11 +184,17 @@ bottomless engineering problem. When the cluster is beyond saving, rebuild it.`,
 				ui.Info("nothing changed")
 				return nil
 			}
+			activeLab, err := markEnvironmentLabPending(m.Profile.ID)
+			if err != nil {
+				return err
+			}
 			if err := m.Destroy(cmd.Context()); err != nil {
 				return err
 			}
-			if err := config.ClearState(); err != nil {
-				return err
+			if activeLab {
+				if err := config.ClearState(); err != nil {
+					return err
+				}
 			}
 			return setupEnvironment(cmd.Context(), m, false)
 		},
@@ -208,7 +214,7 @@ func newEnvDestroyCmd(app *App) *cobra.Command {
 				return err
 			}
 			defer lock.Release()
-			m, err := app.Manager("")
+			m, err := app.CurrentManager()
 			if err != nil {
 				return err
 			}
@@ -216,11 +222,17 @@ func newEnvDestroyCmd(app *App) *cobra.Command {
 				ui.Info("nothing changed")
 				return nil
 			}
+			activeLab, err := markEnvironmentLabPending(m.Profile.ID)
+			if err != nil {
+				return err
+			}
 			if err := m.Destroy(cmd.Context()); err != nil {
 				return err
 			}
-			if err := config.ClearState(); err != nil {
-				return err
+			if activeLab {
+				if err := config.ClearState(); err != nil {
+					return err
+				}
 			}
 			ui.OK("environment %q destroyed", m.Profile.ID)
 			return nil
@@ -228,6 +240,21 @@ func newEnvDestroyCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
+}
+
+// Persist the guard before deleting machines: a partial destroy must not
+// leave the previous scenario eligible for grading. Other profiles keep their
+// active lab when an explicit --profile selects an unrelated environment.
+func markEnvironmentLabPending(profile string) (bool, error) {
+	st, err := config.LoadState()
+	if err != nil {
+		return false, err
+	}
+	if !st.Active() || st.Profile != profile {
+		return false, nil
+	}
+	st.SetupPending = true
+	return true, config.SaveState(st)
 }
 
 // confirm asks a yes/no question. A non-interactive stdin answers no, so an

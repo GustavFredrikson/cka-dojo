@@ -21,19 +21,25 @@ Services learning path
 ## Requirements
 
 - macOS on Apple Silicon (the only combination that is exercised today)
-- 16 GiB of RAM, 40 GiB of free disk
+- 16 GiB of RAM, 44 GiB of free disk for the standard profile
 - [Lima](https://lima-vm.io): `brew install lima`
 - Go 1.25+ to build
 
 ## Getting started
 
 ```bash
+git clone https://github.com/GustavFredrikson/cka-dojo.git
+cd cka-dojo
 make install
+export PATH="$HOME/.local/bin:$PATH"
 dojo doctor
 ```
 
 By default this installs the self-contained binary to `~/.local/bin/dojo`.
 Use `PREFIX=/usr/local make install` to choose a different prefix.
+Add the PATH export to your shell's startup file to keep it for future sessions.
+Other profiles can require more memory and disk; `dojo doctor --profile <name>`
+checks their requirements.
 
 `doctor` checks the host, the dependencies and the content before you spend
 twenty minutes provisioning a cluster that was never going to work.
@@ -70,28 +76,36 @@ dojo reset                 # rebuild this scenario
 dojo stop                  # end the lab and clean up
 dojo scrub                 # wipe your own aliases and files, start exam-fresh
 dojo tutor-context         # safe metadata to paste into an AI tutor
-dojo progress reset        # archive development history and start fresh
+dojo progress reset        # archive your study history and start fresh
 ```
+
+`dojo shell` follows the active lab's environment profile. Use `--profile`
+to select a different one explicitly. If scenario setup fails or is interrupted,
+`dojo status` shows the incomplete setup; use `dojo reset` to rebuild it or
+`dojo stop` to clean it up. Grading stays unavailable until setup succeeds.
 
 The default path is ordered. A passed prerequisite unlocks the next exercise;
 mastery gates can require two passes with the latest successful pass using no
 hints. Experienced learners can jump ahead explicitly with
 `dojo start <lab> --skip-prerequisites`.
 
-The curriculum contains 81 exercises across Workloads, Scheduling, RBAC and
-identity, Services, DNS and CoreDNS, NetworkPolicy, Ingress and the Gateway
+The curriculum contains 96 exercises across 17 modules: Workloads, Scheduling,
+RBAC and identity, Services, DNS and CoreDNS, NetworkPolicy, Ingress and the Gateway
 API, Storage, Pod admission, the non-Deployment workload kinds, control-plane
 administration including etcd backup and restore, Helm/Kustomize/CRDs and
-operators, and mixed troubleshooting. Most topics progress from following a known workflow
+operators, mixed troubleshooting, cluster bootstrap, upgrades and an HA
+control plane. Most topics progress from following a known workflow
 through independent building and inspection to guided repair, contextual
 troubleshooting and exam-style tasks.
 
-All 81 have been dogfooded on a live cluster: started, graded before the fix,
-fixed by hand, graded again, reset, and graded once more to confirm the
-scenario came back — into a separate development history, so none of it counts
-as study you did. `dojo readiness` also prints the published competencies
-with no exercise behind them at all, so a green readiness score is never
-mistaken for full coverage.
+The original 81 exercises were dogfooded on a live cluster: started, graded
+before the fix, fixed by hand, graded again, reset, and graded once more to
+confirm the scenario came back — into a separate development history, so
+none of it counts as study you did. The three HA exercises are experimental
+and have not completed that verification loop: provisioning can stall on
+Lima networking with five VMs. `dojo readiness` prints these limitations and
+the published competencies still missing from the curriculum alongside its
+verdict. See [ROADMAP.md](ROADMAP.md) for verification status.
 
 Environment management:
 
@@ -166,3 +180,9 @@ running in dev mode say so on every invocation.
 
 The cluster, its SSH keys, the active lab and the lock stay shared between the
 two modes — there is only one cluster, and it takes twenty minutes to build.
+
+## License
+
+The code, curriculum and documentation are licensed under the
+[Beer-Ware License, Revision 42](LICENSE). Dependencies retain their own
+licenses.

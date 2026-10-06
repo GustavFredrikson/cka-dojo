@@ -5,7 +5,7 @@ agent or human picking this repo up should be able to read this file alone and
 know what exists, what is next, and which decisions are already settled.
 
 - Status legend: `done` / `in progress` / `next` / `later`
-- Last reviewed: 2026-09-08
+- Last reviewed: 2026-10-06
 
 ---
 
@@ -116,7 +116,8 @@ workloads 15, storage 10.
 - [ ] Add `dojo placement` once enough low-stage exercises exist to produce an
   honest per-skill result
 
-Current size: 81 dogfooded exercises across fourteen modules. The
+Current size: 96 exercises across seventeen modules, including three
+unverified HA labs. The original 81 exercises were dogfooded. The
 etcd/CoreDNS/workload-primitives batch went through the live loop on
 2026-09-07; §8 records the nine defects that found, two of which were in
 content that had already shipped. A second audit the same day found five
@@ -162,7 +163,7 @@ Closing gap 1 is what finishes the job.
 - [x] `upgrade-1.34` profile (1.34.x -> 1.35.x kubeadm upgrade drill)
 - [x] Profile switching stops the other profile and keeps its disks
       (`Manager.StopOthers`, called from `setupEnvironment` and `ensureUp`).
-      `dojo env list/prune` is still unwritten.
+      `dojo env list` shows all profiles; `dojo env prune` is still unwritten.
 
 ### Milestone 6 - exam mode - `later`
 
@@ -196,6 +197,27 @@ no new environment profile — and lists four further requirements.
       kills a control plane outright, add `Manager.Kubeconfig()` returning a
       copy rewritten to the endpoint, plus a fallback across `ControlPlanes()`
       in `KubectlRaw` when a node is unreachable.
+
+### Public release preparation — 2026-10-06
+
+- Validate profile and node identifiers and contain environment cleanup inside
+  the profile's state directory, including when content supplies its own ID.
+- Treat grader execution failures and unavailable RBAC answers as failed checks
+  rather than successful requirements; preserve explicit command exit checks.
+- Resolve the learner's shell and environment recovery commands against the
+  active lab's profile, unless `--profile` explicitly selects another one.
+- Preserve recovery state before building or resetting a scenario, and prevent
+  grading incomplete setup. A failed first setup does not record a study attempt.
+- Resume unfinished provisioning even when the guests are running, and restart
+  stopped guests before repairing scenario faults. Hint and solution commands
+  take the same lock as setup and grading so stale writes cannot lose recovery state.
+- Add the Beer-Ware License, Revision 42, covering code, curriculum and docs.
+- Correct the quickstart's PATH, disk requirement, history-reset wording and
+  curriculum count; identify the HA exercises as experimental.
+
+The fast checks and fake-provider regressions cover these changes without
+touching a learner's cluster or study history. The three HA labs still need
+their live authoring loop before they can be advertised as verified.
 
 ## 4. Exam realism
 

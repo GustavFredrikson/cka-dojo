@@ -1,8 +1,10 @@
 package environment
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/gustavfredrikson/cka-dojo/internal/content"
 )
@@ -32,6 +34,56 @@ func TestStandardProfileLoads(t *testing.T) {
 	}
 	if n := len(p.NodesByRole(RoleWorker)); n != 2 {
 		t.Errorf("workers = %d, want 2", n)
+	}
+}
+
+type countProfileReads struct{ count int }
+
+func (f *countProfileReads) Open(name string) (fs.File, error) {
+	f.count++
+	return nil, fs.ErrNotExist
+}
+
+func TestLoadProfileRejectsTraversalBeforeReading(t *testing.T) {
+	for _, id := range []string{"../outside", "../../outside", ".", "..", "/absolute", `nested\profile`} {
+		reads := &countProfileReads{}
+		src := &content.Source{FS: reads}
+		if _, err := LoadProfile(src, id); err == nil {
+			t.Errorf("LoadProfile(%q) accepted an unsafe selector", id)
+		}
+		if reads.count != 0 {
+			t.Errorf("LoadProfile(%q) read content before rejecting it", id)
+		}
+	}
+}
+
+func TestLoadProfileRejectsMismatchedID(t *testing.T) {
+	for _, id := range []string{"other", "../../outside"} {
+		src := &content.Source{FS: fstest.MapFS{
+			"environments/standard/environment.yaml": &fstest.MapFile{
+				Data: []byte("schemaVersion: 1\nid: " + id + "\n"),
+			},
+		}}
+		if _, err := LoadProfile(src, "standard"); err == nil || !strings.Contains(err.Error(), "does not match directory") {
+			t.Errorf("manifest id %q: err = %v, want mismatch error", id, err)
+		}
+	}
+}
+
+func TestValidateRejectsUnsafeProfileAndNodeNames(t *testing.T) {
+	for _, name := range []string{"../../outside", ".", "..", "two words", "node\nEOF", "$(command)"} {
+		t.Run(name, func(t *testing.T) {
+			p := minimalProfile()
+			p.ID = name
+			if err := p.Validate(); err == nil {
+				t.Error("Validate accepted an unsafe profile id")
+			}
+			p = minimalProfile()
+			p.Nodes[0].Name = name
+			if err := p.Validate(); err == nil {
+				t.Error("Validate accepted an unsafe node name")
+			}
+		})
 	}
 }
 

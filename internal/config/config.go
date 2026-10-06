@@ -52,6 +52,12 @@ type State struct {
 	Attempt      int       `json:"attempt,omitempty"`
 	Checkpoint   int       `json:"checkpoint,omitempty"`
 	SolutionRead bool      `json:"solutionRead,omitempty"`
+	// SetupPending records an incomplete scenario setup or reset. Grading is
+	// unavailable until setup completes successfully.
+	SetupPending bool `json:"setupPending,omitempty"`
+	// EnvironmentPending means machine provisioning has not finished. Recovery
+	// resumes provisioning before attempting to repair or rebuild the scenario.
+	EnvironmentPending bool `json:"environmentPending,omitempty"`
 	// Passed records that this attempt has already been graded correct, so
 	// re-grading does not inflate the pass count.
 	Passed bool `json:"passed,omitempty"`
@@ -137,14 +143,142 @@ func EnsureHome() (string, error) {
 	return home, nil
 }
 
-// EnvDir is the per-profile directory holding generated SSH keys and any other
-// host-side artefacts for an environment.
-func EnvDir(profile string) (string, error) {
-	p, err := path(filepath.Join("env", profile))
+// ValidateID checks names used as filesystem components and VM identifiers.
+// Dots are allowed for profiles such as upgrade-1.34, but path separators,
+// whitespace, shell syntax and leading punctuation are never valid names.
+func ValidateID(id string) error {
+	if id == "" {
+		return fmt.Errorf("id is required")
+	}
+	for i, c := range id {
+		alnum := c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
+		if !alnum && (i == 0 || c != '-' && c != '_' && c != '.') {
+			return fmt.Errorf("invalid id %q: use lowercase letters, digits, dots, hyphens or underscores, starting with a letter or digit", id)
+		}
+	}
+	return nil
+}
+
+// openEnvRoot opens the owned environment tree without following an env/
+// symlink. os.Root also prevents symlink races from escaping the state home.
+// A nil root means the directory is absent and create is false.
+func openEnvRoot(create bool) (*os.Root, string, error) {
+	home, err := Home()
+	if err != nil {
+		return nil, "", err
+	}
+	home, err = filepath.Abs(home)
+	if err != nil {
+		return nil, "", err
+	}
+	if create {
+		if err := os.MkdirAll(home, 0o755); err != nil {
+			return nil, "", err
+		}
+	}
+	root, err := os.OpenRoot(home)
+	if !create && errors.Is(err, os.ErrNotExist) {
+		return nil, filepath.Join(home, "env"), nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	defer root.Close()
+	if create {
+		if err := root.Mkdir("env", 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+			return nil, "", err
+		}
+	}
+	info, err := root.Lstat("env")
+	if !create && errors.Is(err, os.ErrNotExist) {
+		return nil, filepath.Join(home, "env"), nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, "", fmt.Errorf("environment directory %s must be a directory, not a symlink", filepath.Join(home, "env"))
+	}
+	envRoot, err := root.OpenRoot("env")
+	if err != nil {
+		return nil, "", err
+	}
+	opened, err := envRoot.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		envRoot.Close()
+		return nil, "", fmt.Errorf("environment directory changed while opening %s", filepath.Join(home, "env"))
+	}
+	return envRoot, filepath.Join(home, "env"), nil
+}
+
+func checkEnvDir(root *os.Root, profile string) error {
+	info, err := root.Lstat(profile)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("environment directory for %q must be a directory, not a symlink", profile)
+	}
+	return nil
+}
+
+// EnvDirPath validates the per-profile host path without creating it. This
+// lets destruction reject unsafe paths before changing any VM or host files.
+func EnvDirPath(profile string) (string, error) {
+	if err := ValidateID(profile); err != nil {
+		return "", err
+	}
+	root, base, err := openEnvRoot(false)
 	if err != nil {
 		return "", err
 	}
-	return p, os.MkdirAll(p, 0o700)
+	if root != nil {
+		defer root.Close()
+		if err := checkEnvDir(root, profile); err != nil {
+			return "", err
+		}
+	}
+	return filepath.Join(base, profile), nil
+}
+
+// EnvDir is the per-profile directory holding generated SSH keys and any other
+// host-side artefacts for an environment.
+func EnvDir(profile string) (string, error) {
+	if err := ValidateID(profile); err != nil {
+		return "", err
+	}
+	root, base, err := openEnvRoot(true)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	if err := root.Mkdir(profile, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return "", err
+	}
+	if err := checkEnvDir(root, profile); err != nil {
+		return "", err
+	}
+	return filepath.Join(base, profile), nil
+}
+
+// RemoveEnvDir deletes only this profile's owned host artifacts. It never
+// creates directories and Root.RemoveAll cannot follow a link outside env/.
+func RemoveEnvDir(profile string) error {
+	if err := ValidateID(profile); err != nil {
+		return err
+	}
+	root, _, err := openEnvRoot(false)
+	if err != nil || root == nil {
+		return err
+	}
+	defer root.Close()
+	if err := checkEnvDir(root, profile); err != nil {
+		return err
+	}
+	return root.RemoveAll(profile)
 }
 
 // Load reads config.yaml, returning defaults when it does not exist.
@@ -170,11 +304,27 @@ func Load() (*Config, error) {
 	if cfg.Curriculum == "" {
 		cfg.Curriculum = "cka-2026"
 	}
+	if err := ValidateID(cfg.Profile); err != nil {
+		return nil, fmt.Errorf("config profile: %w", err)
+	}
+	if err := ValidateID(cfg.Curriculum); err != nil {
+		return nil, fmt.Errorf("config curriculum: %w", err)
+	}
 	return cfg, nil
 }
 
 // Save writes config.yaml.
 func (c *Config) Save() error {
+	if c.Profile != "" {
+		if err := ValidateID(c.Profile); err != nil {
+			return fmt.Errorf("config profile: %w", err)
+		}
+	}
+	if c.Curriculum != "" {
+		if err := ValidateID(c.Curriculum); err != nil {
+			return fmt.Errorf("config curriculum: %w", err)
+		}
+	}
 	if _, err := EnsureHome(); err != nil {
 		return err
 	}

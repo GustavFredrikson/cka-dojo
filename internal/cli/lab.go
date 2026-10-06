@@ -15,6 +15,7 @@ import (
 	"github.com/gustavfredrikson/cka-dojo/internal/lab"
 	"github.com/gustavfredrikson/cka-dojo/internal/learning"
 	"github.com/gustavfredrikson/cka-dojo/internal/progress"
+	"github.com/gustavfredrikson/cka-dojo/internal/provider"
 	"github.com/gustavfredrikson/cka-dojo/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -202,12 +203,6 @@ func newStartCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), setupTimeout)
-			defer cancel()
-			if err := ensureUp(ctx, m); err != nil {
-				return err
-			}
-
 			if seed == 0 {
 				seed = rand.Int63n(9_000_000) + 1_000_000
 			}
@@ -221,39 +216,61 @@ func newStartCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), setupTimeout)
+			defer cancel()
 
-			// A previous attempt may have left objects behind.
-			runner := lab.NewRunner(m, plan)
+			// Validate the new plan before touching the old lab. Clean it up
+			// before switching profiles, while its machines are still running.
 			if st.Active() {
+				prev, err := app.loadActive(ctx)
+				if err != nil {
+					return err
+				}
+				prev.State.SetupPending = true
+				if err := config.SaveState(prev.State); err != nil {
+					return err
+				}
+				if err := prepareScenarioEnvironment(ctx, prev); err != nil {
+					return incompleteSetupError(err)
+				}
 				ui.Step("clearing the previous lab")
-				if prev, err := app.loadActive(ctx); err == nil {
-					if err := prev.Runner.Teardown(ctx); err != nil {
-						ui.Warn("previous lab did not clean up fully: %v", err)
-					}
+				if err := prev.Runner.Teardown(ctx); err != nil {
+					return incompleteSetupError(fmt.Errorf("could not clean up the previous lab: %w", err))
 				}
 			}
 
-			ui.Step("building scenario for %s", l.ID)
-			if err := runner.Setup(ctx); err != nil {
-				return fmt.Errorf("could not build the scenario: %w", err)
+			nextAttempt := 1
+			if att := history.Labs[l.ID]; att != nil {
+				nextAttempt = att.Attempts + 1
 			}
-
-			att := history.StartAttempt(l.ID, seed, variantID(v), l.Skills, l.Domains)
-			if err := history.Save(); err != nil {
-				return err
-			}
-
 			newState := &config.State{
-				ActiveLab: l.ID,
-				Profile:   m.Profile.ID,
-				Mode:      config.Mode(mode),
-				Variant:   variantID(v),
-				Seed:      seed,
-				StartedAt: time.Now(),
-				Attempt:   att.Attempts,
+				ActiveLab:          l.ID,
+				Profile:            m.Profile.ID,
+				Mode:               config.Mode(mode),
+				Variant:            variantID(v),
+				Seed:               seed,
+				Attempt:            nextAttempt,
+				SetupPending:       true,
+				EnvironmentPending: true,
 			}
 			if err := config.SaveState(newState); err != nil {
 				return err
+			}
+			runner := lab.NewRunner(m, plan)
+			if err := ensureUp(ctx, m); err != nil {
+				return incompleteSetupError(err)
+			}
+			newState.EnvironmentPending = false
+			if err := config.SaveState(newState); err != nil {
+				return incompleteSetupError(err)
+			}
+			ui.Step("building scenario for %s", l.ID)
+			if err := runner.Setup(ctx); err != nil {
+				return incompleteSetupError(err)
+			}
+			a := &active{State: newState, Lab: l}
+			if err := finishSetup(a, history); err != nil {
+				return incompleteSetupError(err)
 			}
 
 			ui.Blank()
@@ -274,6 +291,69 @@ func variantID(v *lab.Variant) string {
 		return ""
 	}
 	return v.ID
+}
+
+func incompleteSetupError(err error) error {
+	return fmt.Errorf("scenario setup is incomplete: %w; retry with `dojo reset` or clean up with `dojo stop` (`dojo env reset` rebuilds the environment)", err)
+}
+
+func requireCompleteSetup(st *config.State) error {
+	if st.SetupPending || st.EnvironmentPending {
+		return incompleteSetupError(fmt.Errorf("lab %q is not ready for grading", st.ActiveLab))
+	}
+	return nil
+}
+
+// Scenario faults may deliberately make the API server or kubelet unhealthy.
+// Start stopped guests without the provisioning health checks, then let
+// teardown repair those faults. An unfinished or missing environment must
+// finish provisioning first, and keeps that phase persisted on failure.
+func prepareScenarioEnvironment(ctx context.Context, a *active) error {
+	if !a.State.EnvironmentPending {
+		statuses, err := a.Env.Status(ctx)
+		if err != nil {
+			return err
+		}
+		for _, status := range statuses {
+			if status.Status == provider.StatusMissing {
+				a.State.EnvironmentPending = true
+				if err := config.SaveState(a.State); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+	if a.State.EnvironmentPending {
+		if err := setupEnvironment(ctx, a.Env, false); err != nil {
+			return err
+		}
+		a.State.EnvironmentPending = false
+		return config.SaveState(a.State)
+	}
+	if err := a.Env.StopOthers(ctx); err != nil {
+		return err
+	}
+	return a.Env.EnsureNodes(ctx)
+}
+
+// finishSetup starts history only after the complete scenario is built. The
+// intended attempt number is persisted first, so a failed history/state write
+// can be retried without counting the same attempt twice.
+func finishSetup(a *active, history *progress.File) error {
+	att := history.Labs[a.Lab.ID]
+	if att == nil || att.Attempts < a.State.Attempt {
+		att = history.StartAttempt(a.Lab.ID, a.State.Seed, a.State.Variant, a.Lab.Skills, a.Lab.Domains)
+		if err := history.Save(); err != nil {
+			return err
+		}
+		a.State.Attempt = att.Attempts
+	}
+	a.State.SetupPending = false
+	a.State.StartedAt = time.Now()
+	a.State.Passed = false
+	a.State.Checkpoint = 0
+	return config.SaveState(a.State)
 }
 
 func printTask(l *lab.Lab, st *config.State) {
@@ -351,6 +431,9 @@ func newCheckCmd(app *App) *cobra.Command {
 			defer lock.Release()
 			a, err := app.loadActive(cmd.Context())
 			if err != nil {
+				return err
+			}
+			if err := requireCompleteSetup(a.State); err != nil {
 				return err
 			}
 			if len(a.Plan.Checkpoints) == 0 {
@@ -444,6 +527,9 @@ equally correct if they leave the cluster in the required state.`,
 			if err != nil {
 				return err
 			}
+			if err := requireCompleteSetup(a.State); err != nil {
+				return err
+			}
 			if a.State.Mode == config.ModeExam {
 				return fmt.Errorf("grading is hidden during an exam; finish it with `dojo exam finish`")
 			}
@@ -494,6 +580,9 @@ equally correct if they leave the cluster in the required state.`,
 }
 
 func recordGrade(a *active, passed bool) (*progress.Attempt, error) {
+	if err := requireCompleteSetup(a.State); err != nil {
+		return nil, err
+	}
 	firstPass := passed && !a.State.Passed
 	history, err := progress.Load()
 	if err != nil {
@@ -549,6 +638,11 @@ func newHintCmd(app *App) *cobra.Command {
 then the commands. Each one is recorded, because a pass that needed help is
 not the same as a pass that did not.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			lock, err := config.Acquire()
+			if err != nil {
+				return err
+			}
+			defer lock.Release()
 			a, err := app.loadActive(cmd.Context())
 			if err != nil {
 				return err
@@ -588,6 +682,11 @@ func newSolutionCmd(app *App) *cobra.Command {
 		Use:   "solution",
 		Short: "Show a worked solution",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			lock, err := config.Acquire()
+			if err != nil {
+				return err
+			}
+			defer lock.Release()
 			a, err := app.loadActive(cmd.Context())
 			if err != nil {
 				return err
@@ -624,17 +723,30 @@ still looks wrong afterwards, ` + "`dojo env reset`" + ` rebuilds the whole thin
 			if err != nil {
 				return err
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), labTimeout)
-			defer cancel()
-			ui.Step("resetting %s", a.Lab.ID)
-			if err := a.Runner.Reset(ctx); err != nil {
+			history, err := progress.Load()
+			if err != nil {
 				return err
 			}
-			a.State.StartedAt = time.Now()
-			a.State.Passed = false
-			a.State.Checkpoint = 0
+			a.State.SetupPending = true
 			if err := config.SaveState(a.State); err != nil {
 				return err
+			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), setupTimeout)
+			defer cancel()
+			if err := prepareScenarioEnvironment(ctx, a); err != nil {
+				return incompleteSetupError(err)
+			}
+			scenarioCtx, cancelScenario := context.WithTimeout(ctx, labTimeout)
+			defer cancelScenario()
+			ui.Step("resetting %s", a.Lab.ID)
+			if err := a.Runner.Teardown(scenarioCtx); err != nil {
+				return incompleteSetupError(err)
+			}
+			if err := a.Runner.Setup(scenarioCtx); err != nil {
+				return incompleteSetupError(err)
+			}
+			if err := finishSetup(a, history); err != nil {
+				return incompleteSetupError(err)
 			}
 			ui.OK("scenario rebuilt; the clock restarted")
 			return nil
@@ -658,12 +770,15 @@ func newStopCmd(app *App) *cobra.Command {
 				return err
 			}
 			if !keep {
+				a.State.SetupPending = true
+				if err := config.SaveState(a.State); err != nil {
+					return err
+				}
 				ctx, cancel := context.WithTimeout(cmd.Context(), labTimeout)
 				defer cancel()
 				ui.Step("cleaning up %s", a.Lab.ID)
 				if err := a.Runner.Teardown(ctx); err != nil {
-					ui.Warn("cleanup was incomplete: %v", err)
-					ui.Info("   `dojo env reset` rebuilds the cluster if it is in a bad state")
+					return incompleteSetupError(fmt.Errorf("cleanup was incomplete: %w", err))
 				}
 			}
 			if err := config.ClearState(); err != nil {
@@ -722,6 +837,10 @@ func newStatusCmd(app *App) *cobra.Command {
 				rows = append(rows, []string{"checkpoint", fmt.Sprintf("%d/%d", st.Checkpoint, len(l.Checkpoints))})
 			}
 			ui.Table(nil, rows)
+			if st.SetupPending {
+				ui.Warn("scenario setup is incomplete; grading and checkpoints are unavailable")
+				ui.Info("Retry with `dojo reset`, clean up with `dojo stop`, or rebuild with `dojo env reset`.")
+			}
 			return nil
 		},
 	}

@@ -36,6 +36,22 @@ func (a *App) Profile() string {
 	return config.DefaultProfile
 }
 
+// CurrentManager follows an explicit profile first, then the running lab's
+// profile. A lab can select a special environment without changing config.
+func (a *App) CurrentManager() (*environment.Manager, error) {
+	if a.profileFlag != "" {
+		return a.Manager(a.profileFlag)
+	}
+	st, err := config.LoadState()
+	if err != nil {
+		return nil, err
+	}
+	if st.Active() && st.Profile != "" {
+		return a.Manager(st.Profile)
+	}
+	return a.Manager("")
+}
+
 // Manager loads the profile and returns an environment manager for it.
 func (a *App) Manager(id string) (*environment.Manager, error) {
 	if id == "" {
