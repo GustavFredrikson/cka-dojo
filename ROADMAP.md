@@ -134,26 +134,35 @@ profile — and the exercises closing them went through the loop on 2026-09-08.
 **Known competency gaps.** What is left is what the `standard` profile cannot
 reach:
 
-1. kubeadm cluster creation, cluster lifecycle/upgrade and an HA control
-   plane — these wait on the milestone 5 and 7 environments.
-2. Certificate *expiry*. `certs-expiration` reads the dates and explains
-   renewal; `kubeconfig-repair` rebuilds a broken kubeconfig. Nothing makes a
-   certificate actually expire, because kubeadm issues them for a year and
-   there is no supported way to backdate one. A lab would need a clock skew
-   fault on cp1, which breaks far more than it teaches.
+1. ~~kubeadm cluster creation and cluster lifecycle/upgrade.~~ **Closed
+   2026-09-21** by the `raw` and `upgrade-1.34` profiles and modules
+   `16-cluster-bootstrap` and `17-cluster-upgrade`. An HA control plane is the
+   last of this group; see milestone 7.
+2. ~~Certificate *expiry*.~~ **Closed 2026-09-21.** The old reasoning — kubeadm
+   issues for a year, there is no supported way to backdate, and a clock-skew
+   fault on cp1 breaks more than it teaches — is right about kubeadm's *own*
+   certificates and wrong about the competency. A client certificate minted
+   against `/etc/kubernetes/pki/ca.key` with `openssl x509 -days -1` is expired
+   on arrival, depends on nothing, and resets with `rm -rf`. The diagnosis and
+   the repair are identical to the real case; only the blast radius differs.
+   Three labs now cover it: `certs-kubeadm-renew` (build),
+   `certs-expired-kubeconfig` (guided-fix), `certs-identity-refused`
+   (diagnose, three variants separating 401-expired from 401-unknown-authority
+   from 403-wrong-subject).
 3. Extension interfaces (CNI/CSI/CRI). CRI inspection is reachable on
    `standard` today; replacing a CNI or a CSI driver is not.
 
 Domain balance is now much closer to the published weighting: cluster
-architecture went from 3 exercises to 8 in `12-control-plane` alone, and
-`dojo readiness` reports 19 labs against its 25% target. Closing gap 1 is what
-finishes the job.
+architecture went from 3 exercises to 11 in `12-control-plane` alone.
+Closing gap 1 is what finishes the job.
 
 ### Milestone 5 - special environments - `later`
 
-- [ ] `raw` profile (bare Linux nodes: containerd, kubeadm init/join, CNI labs)
-- [ ] `upgrade-1.34` profile (1.34.x -> 1.35.x kubeadm upgrade drill)
-- [ ] Profile switching keeps stopped VMs on disk (`dojo env list/prune`)
+- [x] `raw` profile (bare Linux nodes: containerd, kubeadm init/join, CNI labs)
+- [x] `upgrade-1.34` profile (1.34.x -> 1.35.x kubeadm upgrade drill)
+- [x] Profile switching stops the other profile and keeps its disks
+      (`Manager.StopOthers`, called from `setupEnvironment` and `ensureUp`).
+      `dojo env list/prune` is still unwritten.
 
 ### Milestone 6 - exam mode - `later`
 
@@ -165,10 +174,28 @@ Section 4.3 argues this should be taken **before** milestones 5 and 7 — it is
 the largest realism lever in the repo and the only one of the three that needs
 no new environment profile — and lists four further requirements.
 
-### Milestone 7 - HA - `later`
+### Milestone 7 - HA - `in progress`
 
-`ha` profile: cp1/cp2/cp3 + worker + an API endpoint, covering the
-"highly-available control plane" competency.
+- [x] `ha` profile: cp1/cp2/cp3 + worker + an API endpoint. The engine path is
+      built and proven on real machines: haproxy on the workstation before
+      `kubeadm init`, `--control-plane-endpoint` as a name in `/etc/hosts`,
+      `--upload-certs`, `joinControlPlane` re-minting both credentials at join
+      time, `etcd-tools.sh` on every control plane, and a three-member etcd
+      cluster reporting healthy at ~12ms commit latency. The etcd-fsync
+      contention that was expected to be the main risk is not one.
+- [x] Module `18-ha-control-plane`: `ha-topology`, `ha-lost-member`,
+      `ha-endpoint-down`.
+- [ ] **Dogfood the three labs.** Blocked on the Lima usernet wedge in §7: a
+      full five-VM build keeps stalling on Calico image pulls, so the labs have
+      not yet been through the `start -> grade -> fix -> grade -> reset` loop.
+      Until they have, they are unverified content.
+- [ ] Grading under HA. `KubectlRaw` and `stage` run kubectl on the *first*
+      control plane against its own `admin.conf`, so an HA lab that takes that
+      node down kills the grader with it. Every lab in the module therefore
+      breaks cp2 or the workstation's haproxy, never cp1. Before any lab that
+      kills a control plane outright, add `Manager.Kubeconfig()` returning a
+      copy rewritten to the endpoint, plus a fallback across `ControlPlanes()`
+      in `KubectlRaw` when a node is unreachable.
 
 ## 4. Exam realism
 
@@ -373,6 +400,29 @@ exam UI.
 
 ## 7. Known gaps / risks
 
+- **Lima's `user-v2` usernet daemon wedges under the `ha` profile's five VMs.**
+  Observed repeatedly on 2026-09-21: every VM keeps VM-to-VM networking and can
+  ping the gateway (192.168.104.2), DNS still resolves, but *all* outbound TCP
+  times out at once while the host itself is fine. It surfaces as image pulls
+  failing — `kubeadm join --control-plane` dying in preflight on
+  `registry.k8s.io`, or calico-node stuck in `Init:ImagePullBackOff`.
+  It is not fd exhaustion (the daemon held 13 and 52 fds against a host limit
+  of 184320), and it is not the daemon's internal state alone: killing it while
+  the VMs run does **not** help, because the running VMs stay attached to the
+  dead socket. The recovery that works is, in this order:
+
+  ```bash
+  dojo env stop --profile ha
+  pkill -f 'limactl usernet .*\.lima/_networks/user-v2'
+  dojo setup --profile ha        # idempotent; resumes where it stopped
+  ```
+  The three- and four-VM profiles (`raw`, `upgrade-1.34`, `standard`) have never
+  shown it. **Until this is understood, treat `ha` as buildable but not
+  reliably so**, and expect to resume `dojo setup --profile ha` more than once —
+  it is idempotent and picks up where it stopped. Worth measuring whether the
+  trigger is the VM count, the daemon's uptime across several profile builds, or
+  concurrent image pulls from four nodes at once; if it is the last, staggering
+  the control-plane joins would be the cheap fix.
 - Only macOS/arm64 + Lima is exercised. Nothing else is claimed to work.
 - Soft reset cannot undo arbitrary learner damage (e.g. `kubectl delete ns
   kube-system`); `dojo env reset` is the documented answer.
@@ -460,6 +510,75 @@ exam UI.
   the machine being under heavy load is the first thing to suspect.
 
 ## 8. Verification log
+
+2026-09-21, macOS arm64, Lima 2.2.0 — the `raw` and `upgrade-1.34` profiles:
+
+- `raw` builds in 1m19s (it stops after kube-node.sh). All four
+  `16-cluster-bootstrap` labs went through the full loop on real machines,
+  including a genuine `kubeadm init`, a flannel install and a `kubeadm join`.
+- **Grading degrades correctly on a profile with no cluster.** Before
+  `kubeadm init`, every check on `kubeadm-init-cluster` reports as a *failed
+  check*, never an engine error — confirming the decision to give `raw` nodes
+  real `control-plane`/`worker` roles rather than the `blank` role that was
+  reserved for it. `RoleBlank` is deleted; it would have made
+  `Profile.ControlPlane()` nil and turned every kubectl grader into a permanent
+  `broken`.
+- **`grep cp1 /etc/hosts` returns `127.0.1.1` first.** Ubuntu writes
+  `127.0.1.1 <hostname>` above the block the engine appends, so the obvious way
+  to find a node's address yields loopback and `kubeadm init` fails with
+  `unable to select an IP from lo network interface`. Setup scripts now read
+  `--node-ip` out of `/etc/default/kubelet`; the lab teaches the trap rather
+  than hiding it.
+- **`kubeadm upgrade plan` will not plan past its own minor.** Run from the
+  1.34 binary it reports `Target version: v1.34.11` and never mentions 1.35 or
+  the kubelet. Upgrading the `kubeadm` package first is therefore not a
+  convention but a precondition, and `upgrade-plan`'s checkpoints ask about
+  that rather than about output the learner cannot get yet.
+- A drain cannot satisfy a PodDisruptionBudget when the evicted Pods have
+  nowhere to go. `upgrade-worker`'s baseline tolerates the control-plane taint
+  so its three replicas can relocate to cp1; without that the lab would have
+  been unsolvable rather than merely hard.
+- The 1.34 -> 1.35 drill was run end to end on both nodes. Grading briefly
+  fails immediately after the kubelet restart while the API server comes back,
+  which is honest rather than flaky — a learner re-runs `dojo grade`.
+- The one-way guard works: `dojo reset` on an upgraded cluster refuses with the
+  rebuild instruction instead of handing back a lab that already passes.
+
+2026-09-21, macOS arm64, Lima 2.2.0 — the certificate batch (§2 gap 2):
+
+- All three certificate labs went through the full loop (`start` → `grade`
+  fails → fix by hand → `grade` passes → `reset` → `grade` fails again), and
+  `certs-identity-refused` through it once per variant.
+- `openssl x509 -days -1` against the cluster CA is honoured on Ubuntu 24.04
+  (OpenSSL 3.0.13) and produces a certificate the API server rejects. Every
+  lab that mints one asserts `! -checkend 0` in its setup fault: if a future
+  OpenSSL stops accepting a negative `-days`, setup must fail loudly rather
+  than hand over a scenario that already passes.
+- **kube-apiserver hot-reloads its serving certificate.** The first draft of
+  `certs-kubeadm-renew` graded "the certificate served on :6443 matches the one
+  on disk", which passed immediately after `kubeadm certs renew all` with no
+  restart at all — a check that could never fail. What genuinely needs the
+  restart is read once at startup: the API server's *client* certificates to
+  etcd and the kubelets, and the kubeconfigs the scheduler and
+  controller-manager authenticate with. The lab now compares each
+  control-plane container's start time against the mtime of
+  `/etc/kubernetes/pki/apiserver.crt`.
+- **`systemctl restart kubelet` does not recycle static Pods.** kubelet comes
+  back, reconciles against what the runtime is already running, finds manifests
+  unchanged and leaves the containers alone — they keep their original age and
+  their original credentials. Only changing the manifests (moving
+  `/etc/kubernetes/manifests` out and back) actually restarts them. This is the
+  advice most commonly given for "restart the control plane after renewal", and
+  it is wrong; the lab's hints and solution say so explicitly.
+- **`kubectl auth whoami` prints groups as well as the username**, so a
+  substring match on its output accepts a certificate whose `O` is right and
+  whose `CN` is wrong. Both identity labs now compare
+  `-o jsonpath='{.status.userInfo.username}'` exactly. Caught by the
+  `subject-typo` variant, which passed a check it should have failed.
+- Two claims in `docs/authoring-labs.md` were wrong and are corrected:
+  `nodeExec` scripts *and* their `undo` both get `set -euo pipefail` prepended
+  by the engine (`internal/fault/node.go`), and `command` graders get no
+  `set -e` at all (`internal/grader/node.go`).
 
 2026-08-25, macOS arm64, Lima 2.2.0:
 
