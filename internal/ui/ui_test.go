@@ -23,3 +23,27 @@ func TestRenderMarkdownForPager(t *testing.T) {
 		t.Errorf("heading is not bold in pager output: %q", ansi)
 	}
 }
+
+func TestRenderTableAlignsWideCharacters(t *testing.T) {
+	got := renderTable([]string{"", "LEVEL", "EXERCISE"}, [][]string{
+		{"✓", "0", "mental model"},
+		{"🔒", "2", "services-build"},
+		{"·", "1", "services-follow"},
+	})
+	want := "    LEVEL  EXERCISE\n" +
+		"    -----  --------\n" +
+		"✓   0      mental model\n" +
+		"🔒  2      services-build\n" +
+		"·   1      services-follow\n"
+	if got != want {
+		t.Errorf("table is misaligned:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRenderTableWithoutHeaders(t *testing.T) {
+	got := renderTable(nil, [][]string{{"lab", "node-not-ready"}, {"checkpoint", "1/3"}})
+	want := "lab         node-not-ready\ncheckpoint  1/3\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
