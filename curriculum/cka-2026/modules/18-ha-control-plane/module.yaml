@@ -1,0 +1,11 @@
+id: 18-ha-control-plane
+name: Highly-available control plane
+summary: >-
+  Three stacked-etcd control planes behind one endpoint: what the endpoint is,
+  what quorum costs, and what happens when a member goes away. Runs on the `ha`
+  profile.
+domains: [cluster-architecture, troubleshooting]
+labs:
+  - ha-topology
+  - ha-lost-member
+  - ha-endpoint-down

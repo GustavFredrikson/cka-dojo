@@ -1,0 +1,96 @@
+schemaVersion: 1
+id: ha-topology
+title: Read a highly-available control plane
+learningStage: inspect
+domain: [cluster-architecture]
+skills: [high-availability, etcd, control-plane-components, kubeconfig, kubeadm]
+difficulty: 3
+targetMinutes: 14
+environment: {profile: ha}
+
+# Read-only, so it repeats indefinitely and cannot leave the profile in a state
+# the next lab has to undo. It is the rung the two fault labs assume.
+setup: {}
+
+checkpoints:
+  - id: endpoint-name
+    task: |
+      Look at the `server:` URL in the student's kubeconfig on the workstation
+      (`kubectl config view --minify`). It is a name, not one of the control
+      planes' addresses. What is the host part of it?
+    answer:
+      accepted: ["k8s-api"]
+      caseInsensitive: true
+
+  - id: endpoint-host
+    task: |
+      That name resolves through `/etc/hosts`. Which machine in this
+      environment does it point at? Give the node name.
+    answer:
+      accepted: ["terminal"]
+      caseInsensitive: true
+
+  - id: endpoint-process
+    task: |
+      Something on that machine is listening on 6443 and forwarding to the
+      control planes. Which program? One word.
+    answer:
+      accepted: ["haproxy"]
+      caseInsensitive: true
+
+  - id: cluster-config
+    task: |
+      kubeadm recorded the endpoint in the cluster itself, so that joining
+      nodes learn it. Read
+      `kubectl -n kube-system get configmap kubeadm-config -o yaml` and give
+      the value of `controlPlaneEndpoint`.
+    answer:
+      accepted: ["k8s-api:6443"]
+      caseInsensitive: true
+
+  - id: etcd-members
+    task: |
+      On cp1, list the etcd members with `etcdctl member list` (the PKI paths
+      are in the solution to `etcd-snapshot` if you need them). How many are
+      there?
+    answer:
+      accepted: ["3", "three"]
+      caseInsensitive: true
+
+  - id: quorum-loss
+    task: |
+      With that many members, how many can be lost before etcd loses quorum and
+      the cluster stops accepting writes? Give the number.
+    answer:
+      accepted: ["1", "one"]
+      caseInsensitive: true
+
+  - id: apiserver-count
+    task: |
+      How many kube-apiserver Pods are running in this cluster?
+    answer:
+      accepted: ["3", "three"]
+      caseInsensitive: true
+
+grading:
+  all:
+    - type: command
+      target: cp1
+      description: all three etcd members are healthy
+      command: |
+        set -euo pipefail
+        healthy=$(etcdctl \
+          --endpoints=https://127.0.0.1:2379 \
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+          --cert=/etc/kubernetes/pki/etcd/server.crt \
+          --key=/etc/kubernetes/pki/etcd/server.key \
+          endpoint health --cluster 2>&1 | grep -c 'is healthy' || true)
+        test "$healthy" = "3"
+        echo "3 etcd members healthy"
+      stdout: {contains: 3 etcd members healthy}
+    - {type: nodeReady, node: cp1, ready: true}
+    - {type: nodeReady, node: cp2, ready: true}
+    - {type: nodeReady, node: cp3, ready: true}
+
+exam: {eligible: false}
+conflicts: []

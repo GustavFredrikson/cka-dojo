@@ -1,0 +1,96 @@
+schemaVersion: 1
+id: ha-endpoint-down
+title: Nobody can reach the cluster
+learningStage: diagnose
+prerequisites: [ha-topology]
+domain: [cluster-architecture, troubleshooting]
+skills: [high-availability, kubeconfig, control-plane-components, node-troubleshooting]
+difficulty: 3
+targetMinutes: 12
+environment: {profile: ha}
+
+# Cheap, trivially resettable, and it teaches the thing the topology lab only
+# described: --control-plane-endpoint is a load balancer, and a load balancer is
+# a single point of failure unless you make it otherwise.
+#
+# Breaking the workstation's haproxy does not touch sshd, so the learner keeps
+# their shell -- and every control plane keeps working, which is the clue.
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-ha-endpoint-down, kind: deployment, name: ledger}
+  faults:
+    - type: systemdStop
+      node: terminal
+      unit: haproxy
+      disable: true
+
+grading:
+  # Descriptions here are deliberately unspecific: `dojo grade` prints all of
+  # them on the first attempt whether they passed or not.
+  all:
+    - type: nodeService
+      node: terminal
+      unit: haproxy
+      state: active
+      enabled: true
+
+    - type: command
+      target: terminal
+      description: the student's kubectl works again, unchanged
+      command: |
+        set -euo pipefail
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl get nodes -o name | wc -l
+      stdout: {contains: "4"}
+
+    - type: command
+      target: terminal
+      description: and it is still going through the same address it always did
+      # The tempting shortcut is to repoint the kubeconfig at a control plane.
+      # That makes kubectl work and un-does the high availability, so it fails.
+      command: |
+        set -euo pipefail
+        server=$(runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+        if [ "$server" != "https://k8s-api:6443" ]; then
+          echo "the kubeconfig now points at $server" >&2
+          exit 1
+        fi
+        echo "endpoint unchanged"
+      stdout: {contains: endpoint unchanged}
+
+    - type: deploymentAvailable
+      namespace: dojo-ha-endpoint-down
+      name: ledger
+      minReplicas: 2
+
+hints:
+  - Work out how far the failure reaches before changing anything. Try the same
+    command from somewhere other than the workstation -- the answer tells you
+    which side of the connection is broken.
+  - >-
+    The cluster is fine: three control planes, all serving. What your kubectl
+    talks to is not one of them directly. Look at the `server:` in your
+    kubeconfig and work out what actually answers at that address.
+  - >-
+    That address belongs to a process on the workstation, and it is not
+    running. Repointing your kubeconfig at a control plane would make kubectl
+    work and quietly throw away the reason this cluster has three of them --
+    grading checks that you did not.
+  - |
+    On the workstation:
+
+    ```
+    kubectl config view --minify        # server: https://k8s-api:6443
+    grep k8s-api /etc/hosts             # it is this machine
+    systemctl status haproxy
+    sudo systemctl unmask haproxy
+    sudo systemctl enable --now haproxy
+    kubectl get nodes
+    ```
+
+exam: {eligible: true}
+conflicts:
+  - namespace:dojo-ha-endpoint-down
+  - terminal.haproxy

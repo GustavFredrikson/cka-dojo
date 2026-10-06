@@ -169,6 +169,8 @@ skills:
     name: Cluster creation and joining nodes
   - id: cluster-upgrade
     name: Cluster upgrades and version skew
+  - id: high-availability
+    name: Highly-available control plane
   - id: kubeconfig
     name: kubeconfig files
   - id: helm
@@ -215,6 +217,7 @@ modules:
   - 15-troubleshooting
   - 16-cluster-bootstrap
   - 17-cluster-upgrade
+  - 18-ha-control-plane
 
 # Published competencies with no exercise behind them yet. `dojo readiness`
 # prints these alongside its verdict, so a learner is never told they are
@@ -224,7 +227,13 @@ knownGaps:
   - id: ha-control-plane
     name: Highly-available control plane
     domain: cluster-architecture
-    note: Waiting on the ha environment profile.
+    note: >-
+      The `ha` profile and module 18 exist, and the engine path is proven -- three
+      stacked etcd members, healthy, behind a load-balanced endpoint. The three
+      labs have not been through the authoring loop yet, because a full five-VM
+      build keeps stalling on Lima's usernet wedging under that many machines
+      (ROADMAP section 7). Treat them as unverified until that is resolved, and
+      keep studying this elsewhere.
   - id: extension-interfaces
     name: Extension interfaces (CNI, CSI, CRI)
     domain: cluster-architecture

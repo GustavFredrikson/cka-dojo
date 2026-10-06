@@ -1,0 +1,125 @@
+schemaVersion: 1
+id: ha-lost-member
+title: One control plane is down
+learningStage: contextual-fix
+prerequisites: [ha-topology]
+domain: [cluster-architecture, troubleshooting]
+skills: [high-availability, etcd, control-plane-components, kubelet, node-troubleshooting]
+difficulty: 3
+targetMinutes: 15
+environment: {profile: ha}
+
+# The fault is a named primitive with a real Repair, which is what makes this
+# the one HA lab that resets genuinely rather than by rebuilding state.
+#
+# It breaks cp2, never cp1. Profile.ControlPlane() returns the first control
+# plane and every kubectl grader routes through it, so taking cp1 down would
+# break grading for reasons that have nothing to do with the learner.
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-ha-lost-member, kind: deployment, name: ledger}
+  faults:
+    - type: systemdStop
+      node: cp2
+      unit: kubelet
+      # Masked, so a reboot cannot quietly fix the lab.
+      disable: true
+
+grading:
+  all:
+    - type: nodeService
+      node: cp2
+      unit: kubelet
+      state: active
+      enabled: true
+
+    - {type: nodeReady, node: cp2, ready: true}
+
+    - type: command
+      target: cp1
+      description: etcd has all three of its members answering
+      # Count them. `contains: is healthy` passes with one healthy member and
+      # two missing, which is exactly the state this lab is about.
+      command: |
+        set -euo pipefail
+        healthy=$(etcdctl \
+          --endpoints=https://127.0.0.1:2379 \
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+          --cert=/etc/kubernetes/pki/etcd/server.crt \
+          --key=/etc/kubernetes/pki/etcd/server.key \
+          endpoint health --cluster 2>&1 | grep -c 'is healthy' || true)
+        if [ "$healthy" != "3" ]; then
+          echo "only $healthy of 3 etcd members are healthy" >&2
+          exit 1
+        fi
+        echo "3 etcd members healthy"
+      stdout: {contains: 3 etcd members healthy}
+
+    - type: command
+      target: cp1
+      description: all three API servers are running again
+      command: |
+        set -euo pipefail
+        n=$(kubectl -n kube-system get pods -l component=kube-apiserver \
+          --field-selector=status.phase=Running -o name | wc -l)
+        test "$n" = 3
+        echo "3 API servers running"
+      stdout: {contains: 3 API servers running}
+
+    - type: deploymentAvailable
+      namespace: dojo-ha-lost-member
+      name: ledger
+      minReplicas: 2
+
+    - type: command
+      target: terminal
+      description: the workstation still reaches the cluster through the endpoint
+      # -u KUBECONFIG because the command grader exports the admin kubeconfig
+      # path, and the workstation has no such file.
+      command: |
+        set -euo pipefail
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+        echo
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl get nodes -o name | wc -l
+      stdout: {contains: k8s-api}
+
+hints:
+  - The cluster is serving normally, so start by working out what is *not*
+    taking part. Compare `kubectl get nodes` against the machines this
+    environment actually has.
+  - >-
+    A control-plane node that stops reporting has not necessarily lost its
+    control-plane components -- it may simply have stopped telling anyone about
+    them. Look at what runs the static Pods on that node, and whether it is
+    running.
+  - >-
+    The unit is not just stopped, it is masked, so starting it is two steps
+    rather than one. Check `systemctl is-enabled` as well as `is-active`, and
+    remember that etcd is what you actually care about coming back -- confirm
+    membership rather than trusting the node's Ready status.
+  - |
+    On cp2:
+
+    ```
+    systemctl status kubelet
+    sudo systemctl unmask kubelet
+    sudo systemctl enable --now kubelet
+    ```
+
+    Then confirm the etcd member rejoined, from cp1:
+
+    ```
+    sudo etcdctl --endpoints=https://127.0.0.1:2379 \
+      --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+      --cert=/etc/kubernetes/pki/etcd/server.crt \
+      --key=/etc/kubernetes/pki/etcd/server.key \
+      endpoint health --cluster
+    ```
+
+exam: {eligible: true}
+conflicts:
+  - namespace:dojo-ha-lost-member
+  - cp2.kubelet
