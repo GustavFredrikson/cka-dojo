@@ -9,6 +9,10 @@ fi
 
 kubeadm init \
   --kubernetes-version="v{{.K8sVersion}}" \
+{{- if .ControlPlaneEndpoint}}
+  --control-plane-endpoint="{{.ControlPlaneEndpoint}}" \
+  --upload-certs \
+{{- end}}
   --apiserver-advertise-address="{{.NodeIP}}" \
   --pod-network-cidr="{{.PodSubnet}}" \
   --service-cidr="{{.ServiceSubnet}}" \

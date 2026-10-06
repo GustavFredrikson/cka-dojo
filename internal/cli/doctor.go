@@ -71,19 +71,36 @@ func runDoctor(ctx context.Context, app *App) error {
 		remedy:  "only arm64 (Apple Silicon) is exercised today",
 	})
 
+	// Size the host against the profile that is actually selected. Hardcoding
+	// the standard profile's numbers would greenlight a heavier one on a host
+	// that cannot carry it.
+	profileID := app.Profile()
+	guestGiB, diskGiB := 9.0, 30.0
+	wantMem, wantDisk := 16.0, 40.0
+	if prof, perr := environment.LoadProfile(app.Src, profileID); perr == nil {
+		guestGiB = prof.TotalMemoryGiB()
+		diskGiB = prof.TotalDiskGiB()
+		// Guests plus headroom for macOS and everything else the user is
+		// running. The standard profile's 9 GiB is what put the floor at 16.
+		wantMem = guestGiB + 7
+		wantDisk = diskGiB * 0.5
+	}
+
 	memGiB := hostMemoryGiB()
 	report(check{
-		ok:     memGiB >= 16,
-		msg:    fmt.Sprintf("memory: %.0f GiB", memGiB),
-		remedy: "the standard profile wants about 9 GiB of guest memory; 16 GiB of host RAM is the practical floor",
+		ok:  memGiB >= wantMem,
+		msg: fmt.Sprintf("memory: %.0f GiB", memGiB),
+		remedy: fmt.Sprintf("the %s profile wants about %.0f GiB of guest memory; %.0f GiB of host RAM is the practical floor",
+			profileID, guestGiB, wantMem),
 	})
 
 	freeGiB, err := freeDiskGiB("/")
 	if err == nil {
 		report(check{
-			ok:     freeGiB >= 40,
-			msg:    fmt.Sprintf("free disk: %.0f GiB", freeGiB),
-			remedy: "a standard environment uses roughly 25-30 GiB once provisioned",
+			ok:  freeGiB >= wantDisk,
+			msg: fmt.Sprintf("free disk: %.0f GiB", freeGiB),
+			remedy: fmt.Sprintf("the %s profile declares %.0f GiB of thin-provisioned disk and uses well under that once built; keep %.0f GiB free",
+				profileID, diskGiB, wantDisk),
 		})
 	}
 

@@ -30,14 +30,23 @@ type scriptVars struct {
 	NodeIPs        map[string]string
 	ControlPlane   string
 	ControlPlaneIP string
-	K8sVersion     string
-	K8sMinor       string
-	PodSubnet      string
-	ServiceSubnet  string
-	NodeSubnet     string
-	CalicoVersion  string
-	MetricsVersion string
-	HelmVersion    string
+	// ControlPlaneEndpoint is "name:port" when the profile puts a load
+	// balancer in front of the API server, and "" otherwise. Scripts branch on
+	// it being empty, so single-control-plane profiles render unchanged.
+	ControlPlaneEndpoint     string
+	ControlPlaneEndpointName string
+	ControlPlaneEndpointPort int
+	// ControlPlaneIPs maps each control-plane node to its address, for the
+	// load balancer's backend list.
+	ControlPlaneIPs map[string]string
+	K8sVersion      string
+	K8sMinor        string
+	PodSubnet       string
+	ServiceSubnet   string
+	NodeSubnet      string
+	CalicoVersion   string
+	MetricsVersion  string
+	HelmVersion     string
 	// Platform addon versions. See Profile.Addons for why each is installed.
 	LocalPathVersion    string
 	IngressNginxVersion string
@@ -88,6 +97,15 @@ func (m *Manager) vars(ctx context.Context, node string) (*scriptVars, error) {
 	if cp != nil {
 		v.ControlPlane = cp.Name
 		v.ControlPlaneIP = ips[cp.Name]
+	}
+	if m.Profile.HasAPIEndpoint() {
+		v.ControlPlaneEndpoint = m.Profile.APIEndpointAddr()
+		v.ControlPlaneEndpointName = m.Profile.APIEndpoint.Name
+		v.ControlPlaneEndpointPort = m.Profile.APIEndpoint.Port
+	}
+	v.ControlPlaneIPs = map[string]string{}
+	for _, n := range m.Profile.ControlPlanes() {
+		v.ControlPlaneIPs[n.Name] = ips[n.Name]
 	}
 	return v, nil
 }
@@ -215,6 +233,13 @@ func (m *Manager) Up(ctx context.Context, force bool) error {
 	if err := m.baseProvision(ctx, force); err != nil {
 		return err
 	}
+	// A `nodes` profile hands over prepared machines and stops. It still gets
+	// verifyNodeAddresses above, because kube-node.sh writes the --node-ip pin
+	// that check reads, and a drifted address breaks the cluster the learner
+	// builds exactly as it breaks a provisioned one.
+	if m.Profile.Provisioning == ProvisionNodes {
+		return m.kubeNodeProvision(ctx, force)
+	}
 	return m.kubeadmProvision(ctx, force)
 }
 
@@ -334,6 +359,16 @@ func (m *Manager) writeHosts(ctx context.Context, ips map[string]string) error {
 	for _, name := range sortedKeys(ips) {
 		fmt.Fprintf(&block, "%s %s\n", ips[name], name)
 	}
+	// The API server endpoint is a name rather than an address precisely so it
+	// can be rewritten here. --control-plane-endpoint is baked into the API
+	// server certificate's SANs at `kubeadm init` and cannot be changed
+	// afterwards; if the load balancer's address ever moves, this line is the
+	// whole fix.
+	if m.Profile.HasAPIEndpoint() {
+		if ip := ips[m.Profile.APIEndpoint.Node]; ip != "" {
+			fmt.Fprintf(&block, "%s %s\n", ip, m.Profile.APIEndpoint.Name)
+		}
+	}
 	block.WriteString("# END dojo\n")
 
 	script := fmt.Sprintf(`set -euo pipefail
@@ -422,14 +457,35 @@ chmod 600 /home/%[1]s/.ssh/authorized_keys
 }
 
 // kubeadmProvision installs Kubernetes: nodes, control plane, CNI, workers.
+// kubeNodeProvision makes every cluster node ready for kubeadm and stops
+// there: containerd, the kubeadm toolchain, swap off, the sysctls and the
+// --node-ip pin. It is the whole of a `nodes` profile and the first phase of a
+// kubeadm one.
+func (m *Manager) kubeNodeProvision(ctx context.Context, force bool) error {
+	for _, n := range m.Profile.ClusterNodes() {
+		if err := m.step(ctx, n.Name, "kube-node.sh", force,
+			fmt.Sprintf("installing containerd and Kubernetes %s", m.Profile.Kubernetes.Version)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *Manager) kubeadmProvision(ctx context.Context, force bool) error {
 	cp := m.Profile.ControlPlane()
 	workers := m.Profile.NodesByRole(RoleWorker)
 
-	kubeNodes := append([]*NodeConfig{cp}, workers...)
-	for _, n := range kubeNodes {
-		if err := m.step(ctx, n.Name, "kube-node.sh", force,
-			fmt.Sprintf("installing containerd and Kubernetes %s", m.Profile.Kubernetes.Version)); err != nil {
+	if err := m.kubeNodeProvision(ctx, force); err != nil {
+		return err
+	}
+
+	// The load balancer has to answer before `kubeadm init` runs: the endpoint
+	// goes into the API server certificate's SANs and into every kubeconfig at
+	// init time. haproxy starts happily with its backends down, which is what
+	// resolves the chicken-and-egg.
+	if m.Profile.HasAPIEndpoint() {
+		if err := m.step(ctx, m.Profile.APIEndpoint.Node, "api-lb.sh", force,
+			"installing the API server load balancer"); err != nil {
 			return err
 		}
 	}
@@ -440,8 +496,22 @@ func (m *Manager) kubeadmProvision(ctx context.Context, force bool) error {
 	if err := m.step(ctx, cp.Name, "cni.sh", force, "installing Calico"); err != nil {
 		return err
 	}
-	if err := m.step(ctx, cp.Name, "etcd-tools.sh", force, "installing etcdctl and etcdutl"); err != nil {
-		return err
+
+	// Further control planes join after the CNI, so their Pods can schedule.
+	for _, n := range m.Profile.ControlPlanes()[1:] {
+		if err := m.joinControlPlane(ctx, n.Name, force); err != nil {
+			return err
+		}
+	}
+
+	// Every control plane carries its own stacked etcd member, so each one
+	// needs the tools to inspect it -- and etcd-tools.sh reads the version out
+	// of the node's own etcd manifest, so it has to run *after* that node has
+	// joined and has one. One iteration on a single-CP profile.
+	for _, n := range m.Profile.ControlPlanes() {
+		if err := m.step(ctx, n.Name, "etcd-tools.sh", force, "installing etcdctl and etcdutl"); err != nil {
+			return err
+		}
 	}
 
 	for _, w := range workers {
@@ -450,19 +520,88 @@ func (m *Manager) kubeadmProvision(ctx context.Context, force bool) error {
 		}
 	}
 
-	if err := m.step(ctx, cp.Name, "addons.sh", force, "installing metrics-server"); err != nil {
-		return err
+	// Each addon step is skipped when its version is unset, so a profile that
+	// exists to exercise the control plane does not spend eight minutes
+	// installing an ingress controller no lab on it will use.
+	if m.Profile.Addons.MetricsServer != "" {
+		if err := m.step(ctx, cp.Name, "addons.sh", force, "installing metrics-server"); err != nil {
+			return err
+		}
 	}
-	if err := m.step(ctx, cp.Name, "dynamic-storage.sh", force, "installing the local-path provisioner"); err != nil {
-		return err
+	if m.Profile.Addons.LocalPathProvisioner != "" {
+		if err := m.step(ctx, cp.Name, "dynamic-storage.sh", force, "installing the local-path provisioner"); err != nil {
+			return err
+		}
 	}
-	if err := m.step(ctx, cp.Name, "ingress.sh", force, "installing ingress-nginx and the Gateway API"); err != nil {
-		return err
+	if m.Profile.Addons.IngressNginx != "" {
+		if err := m.step(ctx, cp.Name, "ingress.sh", force, "installing ingress-nginx and the Gateway API"); err != nil {
+			return err
+		}
 	}
 	if err := m.distributeKubeconfig(ctx); err != nil {
 		return err
 	}
 	return m.WaitReady(ctx, 10*time.Minute)
+}
+
+// joinControlPlane adds a further control plane to an existing cluster.
+//
+// Both credentials are minted here rather than read from `kubeadm init`'s
+// output: the bootstrap token expires after 24 hours and the certificate key
+// after two, and `dojo setup` is resumable across days.
+//
+// The control-plane-only flags go into the command string rather than into
+// join.sh, because that template is shared with joinWorker and
+// --apiserver-advertise-address would break a worker join.
+func (m *Manager) joinControlPlane(ctx context.Context, node string, force bool) error {
+	// A distinct marker from joinWorker's, so a --force rerun cannot confuse
+	// the two kinds of join.
+	marker := path.Join(markerDir, "join-control-plane")
+	joined, err := m.markerExists(ctx, node, marker)
+	if err != nil {
+		return err
+	}
+	if joined && !force {
+		ui.Detail("%s: already joined as a control plane", node)
+		return nil
+	}
+	ui.Step("%s: joining as a control plane", node)
+	first := m.Profile.ControlPlanes()[0]
+
+	join, err := m.Run(ctx, first.Name, "set -euo pipefail\nkubeadm token create --print-join-command\n")
+	if err != nil {
+		return fmt.Errorf("mint join command on %s: %w", first.Name, err)
+	}
+	join = strings.TrimSpace(join)
+	if !strings.HasPrefix(join, "kubeadm join") {
+		return fmt.Errorf("unexpected join command from %s: %q", first.Name, join)
+	}
+
+	key, err := m.Run(ctx, first.Name,
+		"set -euo pipefail\nkubeadm init phase upload-certs --upload-certs | tail -1\n")
+	if err != nil {
+		return fmt.Errorf("upload certs on %s: %w", first.Name, err)
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("no certificate key returned by %s", first.Name)
+	}
+
+	v, err := m.vars(ctx, node)
+	if err != nil {
+		return err
+	}
+	v.JoinCommand = fmt.Sprintf("%s --control-plane --certificate-key %s --apiserver-advertise-address %s",
+		join, key, v.NodeIP)
+	body, err := m.renderScript("join.sh", v)
+	if err != nil {
+		return err
+	}
+	res, err := m.Exec(ctx, node, body, "root")
+	if err != nil {
+		return fmt.Errorf("kubeadm join --control-plane on %s failed: %w\n%s", node, err, tailOf(res))
+	}
+	return m.touchMarker(ctx, node, marker)
 }
 
 // joinWorker fetches a fresh join command from the control plane. Tokens
@@ -515,13 +654,22 @@ func (m *Manager) distributeKubeconfig(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read admin.conf from %s: %w", cp.Name, err)
 	}
-	cpIP, err := m.nodeIP(ctx, cp.Name)
-	if err != nil {
-		return err
+	// Point the workstation at the load balancer when there is one, so a
+	// learner's kubectl survives the control plane it happens to be talking to
+	// going away -- which is the entire subject of an HA lab.
+	server := ""
+	if m.Profile.HasAPIEndpoint() {
+		server = "https://" + m.Profile.APIEndpointAddr()
+	} else {
+		cpIP, err := m.nodeIP(ctx, cp.Name)
+		if err != nil {
+			return err
+		}
+		// kubeadm writes the advertise address already, but rewriting it keeps
+		// this correct if a profile ever advertises a different endpoint.
+		server = "https://" + cpIP + ":6443"
 	}
-	// kubeadm writes the advertise address already, but rewriting it keeps
-	// this correct if a profile ever advertises a different endpoint.
-	kubeconfig := rewriteServer(string(raw), "https://"+cpIP+":6443")
+	kubeconfig := rewriteServer(string(raw), server)
 	home := "/home/" + StudentUser
 	vm := m.VMName(ws.Name)
 	if err := m.Prov.WriteFile(ctx, vm, home+"/.kube/config", []byte(kubeconfig), 0o600); err != nil {
@@ -550,7 +698,9 @@ func (m *Manager) WaitReady(ctx context.Context, timeout time.Duration) error {
 	if cp == nil {
 		return nil
 	}
-	want := 1 + len(m.Profile.NodesByRole(RoleWorker))
+	// Every control plane, not just the first: a four-node HA profile that
+	// counted 1 + workers would call the cluster ready at two.
+	want := len(m.Profile.ControlPlanes()) + len(m.Profile.NodesByRole(RoleWorker))
 	ui.Step("waiting for %d nodes to become Ready", want)
 	deadline := time.Now().Add(timeout)
 	for {

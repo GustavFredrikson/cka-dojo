@@ -55,7 +55,17 @@ func newEnvStatusCmd(app *App) *cobra.Command {
 			}
 			ui.Table([]string{"NODE", "ROLE", "STATE", "ADDRESS", "MEMORY"}, rows)
 
-			if running, _ := m.Running(cmd.Context()); running && m.Profile.ControlPlane() != nil {
+			// A `nodes` profile has a control-plane node and deliberately no
+			// cluster on it, so reporting "the API server is not answering"
+			// would be describing the point of the profile as a fault.
+			running, _ := m.Running(cmd.Context())
+			if running && m.Profile.Provisioning == environment.ProvisionNodes {
+				ui.Blank()
+				ui.Info("This profile stops before `kubeadm init`: the machines are prepared")
+				ui.Info("and there is no cluster on them yet. Building one is the exercise.")
+				return nil
+			}
+			if running && m.Profile.ControlPlane() != nil {
 				ui.Blank()
 				out, err := m.Kubectl(cmd.Context(), "get", "nodes", "-o", "wide", "--no-headers")
 				if err != nil {

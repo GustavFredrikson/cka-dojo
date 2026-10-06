@@ -1,0 +1,79 @@
+# Three stacked-etcd control planes behind one endpoint, plus a worker.
+#
+# For the "highly-available control plane" competency: `kubeadm join
+# --control-plane`, etcd quorum, and what actually happens when a control plane
+# goes away.
+#
+# Roughly 11 GiB of guest RAM, against standard's 9. This profile and any other
+# cannot both be up on a 24 GiB host, which is why `dojo setup` stops the other
+# one first.
+schemaVersion: 1
+id: ha
+description: Workstation/LB + 3 control planes + 1 worker, kubeadm, Calico
+
+provisioning: kubeadm
+
+kubernetes:
+  version: "1.35.8"
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+
+# The stable address every client and every joining control plane uses. It has
+# to exist before `kubeadm init`: --control-plane-endpoint is written into the
+# API server certificate's SANs, into kube-proxy's ConfigMap and into every
+# kubeconfig, and cannot be added afterwards without reissuing certificates.
+apiEndpoint:
+  # haproxy runs here. A workstation, not a control plane: this is the external
+  # load balancer the kubeadm HA documentation describes, and it is the one
+  # machine labs are not allowed to break.
+  node: terminal
+  # A name, not an address, written into the /etc/hosts block the engine
+  # already owns. If the load balancer's address ever moves, the fix is one
+  # rewritten hosts line rather than reissued certificates.
+  name: k8s-api
+  port: 6443
+
+cni:
+  provider: calico
+  version: "v3.32.1"
+
+addons:
+  # Deliberately short. ingress-nginx, the Gateway API and the local-path
+  # provisioner exist for standard's curriculum; this profile is about the
+  # control plane, and skipping them saves roughly eight minutes per build and
+  # a few hundred MiB on the single worker. The engine skips an addon step
+  # whose version is unset.
+  metricsServer: "v0.9.0"
+  helm: "v3.21.4"
+
+network:
+  lima: user-v2
+  subnet: "192.168.104.0/24"
+
+nodes:
+  - name: terminal
+    role: workstation
+    # A little more than standard's 1 GiB: it also runs haproxy.
+    cpus: 2
+    memory: "1536MiB"
+    disk: "16GiB"
+  - name: cp1
+    role: control-plane
+    cpus: 2
+    memory: "2560MiB"
+    disk: "24GiB"
+  - name: cp2
+    role: control-plane
+    cpus: 2
+    memory: "2560MiB"
+    disk: "24GiB"
+  - name: cp3
+    role: control-plane
+    cpus: 2
+    memory: "2560MiB"
+    disk: "24GiB"
+  - name: worker1
+    role: worker
+    cpus: 2
+    memory: "2GiB"
+    disk: "24GiB"

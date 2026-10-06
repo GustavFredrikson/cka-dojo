@@ -145,6 +145,32 @@ func (m *Manager) Stop(ctx context.Context) error {
 	return nil
 }
 
+// StopOthers shuts down every dojo machine belonging to a different profile.
+//
+// Only one environment is meant to run at a time. Nothing enforced that until
+// now, and two at once is a memory budget nobody has: the standard profile
+// alone wants about 9 GiB of guest RAM. The host starts swapping long before
+// the second cluster finishes booting, and the first symptom is etcd losing
+// quorum -- which reads as a bug in whichever profile was started second.
+//
+// Disks are kept, so switching back is a start rather than a rebuild.
+func (m *Manager) StopOthers(ctx context.Context) error {
+	nodes, err := m.Prov.List(ctx, NamePrefix)
+	if err != nil {
+		return err
+	}
+	for _, n := range nodes {
+		if strings.HasPrefix(n.Name, m.Prefix()) || n.Status != provider.StatusRunning {
+			continue
+		}
+		ui.Step("stopping %s (it belongs to another profile)", n.Name)
+		if err := m.Prov.StopNode(ctx, n.Name); err != nil {
+			return fmt.Errorf("stop %s: %w", n.Name, err)
+		}
+	}
+	return nil
+}
+
 // Destroy deletes every node of this profile.
 func (m *Manager) Destroy(ctx context.Context) error {
 	for i := len(m.Profile.Nodes) - 1; i >= 0; i-- {

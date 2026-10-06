@@ -57,6 +57,12 @@ func setupEnvironment(ctx context.Context, m *environment.Manager, force bool) e
 	ui.Info("The first run downloads an OS image and installs packages; expect 15-25 minutes.")
 	ui.Blank()
 
+	// Only one environment runs at a time. Stop the other profile's machines
+	// before claiming this one's memory, rather than letting both fight for it.
+	if err := m.StopOthers(ctx); err != nil {
+		return err
+	}
+
 	start := time.Now()
 	if err := m.Up(ctx, force); err != nil {
 		return err
@@ -77,7 +83,9 @@ func ensureUp(ctx context.Context, m *environment.Manager) error {
 		return err
 	}
 	if running {
-		return nil
+		// Already up, but another profile may be up alongside it -- a lab that
+		// names a second profile starts this one without ever stopping that.
+		return m.StopOthers(ctx)
 	}
 	ui.Warn("environment %q is not running; building it first", m.Profile.ID)
 	return setupEnvironment(ctx, m, false)

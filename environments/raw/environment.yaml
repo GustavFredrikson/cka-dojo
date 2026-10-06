@@ -1,0 +1,63 @@
+# Bare-but-prepared Linux nodes. containerd and the kubeadm toolchain are
+# installed at the pinned patch, swap is off and the sysctls are set -- and
+# nothing has been initialised. Installing Kubernetes is the exercise.
+#
+# Roughly 6.5 GiB of guest RAM, so it is lighter than `standard`.
+#
+# The nodes declare roles control-plane and worker even though no control plane
+# exists yet. The role states intent, not current state: it is what tells the
+# engine which machines get kube-node.sh, and what makes Profile.ControlPlane()
+# return cp1 so graders can check the cluster the learner builds. Before
+# `kubeadm init` those graders fail cleanly -- kubectl exits non-zero because
+# there is no admin.conf -- which is the correct verdict rather than an error.
+schemaVersion: 1
+id: raw
+description: Workstation + an uninitialised control plane + an uninitialised worker
+
+# Stops after kube-node.sh. No kubeadm init, no CNI, no addons, and no
+# kubeconfig on the workstation -- copying one there is part of the exercise.
+provisioning: nodes
+
+kubernetes:
+  # Pins both the apt repository minor and the exact package patch that
+  # kube-node.sh installs. Same version as `standard` on purpose: this profile
+  # is about building a cluster, not about version skew.
+  version: "1.35.8"
+  # Not consumed by any script in this mode -- nothing runs kubeadm init here.
+  # Declared so that the CIDRs a lab's task text tells the learner to pass live
+  # in one place and cannot drift from what its graders assert.
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+
+cni:
+  # Installing this is the exercise. The version is here so a lab's task text
+  # and its grader agree on what to expect; the labs accept any CNI that gives
+  # the node a working pod network in the declared CIDR.
+  provider: calico
+  version: "v3.32.1"
+
+addons:
+  # Only what the workstation needs. There is no cluster to install anything
+  # into, and the addon steps do not run in this mode.
+  helm: "v3.21.4"
+
+network:
+  lima: user-v2
+  subnet: "192.168.104.0/24"
+
+nodes:
+  - name: terminal
+    role: workstation
+    cpus: 2
+    memory: "1GiB"
+    disk: "16GiB"
+  - name: cp1
+    role: control-plane
+    cpus: 2
+    memory: "3GiB"
+    disk: "24GiB"
+  - name: worker1
+    role: worker
+    cpus: 2
+    memory: "2500MiB"
+    disk: "24GiB"
