@@ -124,16 +124,18 @@ dojo start <lab>
     │
     ├── load curriculum, find the lab
     ├── enforce pass/mastery prerequisites unless explicitly skipped
-    ├── ensure the environment is up (build it if not)
     ├── pick a variant from the seed
     ├── build a Plan: manifests + faults + checks
+    ├── clean up any previous scenario
     │
+    ├── save state.json with setup marked pending
+    ├── ensure the environment is up (build it if not)
     ├── Runner.Setup:
     │      apply baseline manifests
     │      wait for the baseline to settle    <- so the learner does not
     │      inject faults                         diagnose a slow start-up
     │
-    └── write state.json, print task.md
+    └── record the attempt, clear pending setup, print task.md
 
 dojo check                         <- interactive exercises only
     │
@@ -150,6 +152,18 @@ dojo grade
 State on disk holds only identifiers — lab id, variant, seed, start time. The
 plan is rebuilt from content each time, so editing a lab and re-grading works
 while authoring.
+
+Pending setup is saved before the scenario changes. If setup fails or the
+process exits early, `stop` and `reset` can still rebuild the plan and recover.
+`grade` and `check` refuse pending scenarios. A failed initial setup records
+no study attempt; a successful recovery starts the attempt. The shell and
+environment recovery commands follow the stored profile unless the user
+supplies an explicit `--profile`.
+
+Recovery distinguishes unfinished environment provisioning from scenario
+setup. It resumes interrupted provisioning even when all VMs are running.
+For a provisioned scenario, it starts stopped guests and repairs the lab's
+faults before running checks that require a healthy cluster.
 
 ## Where the answers live
 

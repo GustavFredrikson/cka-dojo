@@ -3,7 +3,6 @@ package environment
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -59,6 +58,9 @@ type NodeStatus struct {
 // Status reports every node's state. It never fails just because a node is
 // missing: dojo env status has to work on a half-built environment.
 func (m *Manager) Status(ctx context.Context) ([]NodeStatus, error) {
+	if err := m.Profile.validateIDs(); err != nil {
+		return nil, err
+	}
 	out := make([]NodeStatus, 0, len(m.Profile.Nodes))
 	for _, n := range m.Profile.Nodes {
 		vm := m.VMName(n.Name)
@@ -93,6 +95,12 @@ func (m *Manager) Running(ctx context.Context) (bool, error) {
 
 // Exec runs a script on a node of this profile.
 func (m *Manager) Exec(ctx context.Context, node, script, user string) (provider.ExecResult, error) {
+	if err := m.Profile.validateIDs(); err != nil {
+		return provider.ExecResult{}, err
+	}
+	if err := config.ValidateID(node); err != nil {
+		return provider.ExecResult{}, fmt.Errorf("node name: %w", err)
+	}
 	return m.Prov.Exec(ctx, m.VMName(node), provider.ExecOptions{Script: script, User: user})
 }
 
@@ -105,6 +113,9 @@ func (m *Manager) Run(ctx context.Context, node, script string) (string, error) 
 // EnsureNodes creates and starts every machine, in parallel. Boot dominates
 // setup time, so serial creation would roughly quadruple it.
 func (m *Manager) EnsureNodes(ctx context.Context) error {
+	if err := m.Profile.validateIDs(); err != nil {
+		return err
+	}
 	var wg sync.WaitGroup
 	errs := make([]error, len(m.Profile.Nodes))
 	for i, n := range m.Profile.Nodes {
@@ -136,6 +147,9 @@ func (m *Manager) EnsureNodes(ctx context.Context) error {
 
 // Stop shuts every node down, keeping disks so switching profiles is cheap.
 func (m *Manager) Stop(ctx context.Context) error {
+	if err := m.Profile.validateIDs(); err != nil {
+		return err
+	}
 	for _, n := range m.Profile.Nodes {
 		ui.Step("stopping %s", n.Name)
 		if err := m.Prov.StopNode(ctx, m.VMName(n.Name)); err != nil {
@@ -155,6 +169,9 @@ func (m *Manager) Stop(ctx context.Context) error {
 //
 // Disks are kept, so switching back is a start rather than a rebuild.
 func (m *Manager) StopOthers(ctx context.Context) error {
+	if err := m.Profile.validateIDs(); err != nil {
+		return err
+	}
 	nodes, err := m.Prov.List(ctx, NamePrefix)
 	if err != nil {
 		return err
@@ -173,6 +190,12 @@ func (m *Manager) StopOthers(ctx context.Context) error {
 
 // Destroy deletes every node of this profile.
 func (m *Manager) Destroy(ctx context.Context) error {
+	if err := m.Profile.validateIDs(); err != nil {
+		return err
+	}
+	if _, err := config.EnvDirPath(m.Profile.ID); err != nil {
+		return fmt.Errorf("environment artifacts: %w", err)
+	}
 	for i := len(m.Profile.Nodes) - 1; i >= 0; i-- {
 		n := m.Profile.Nodes[i]
 		ui.Step("destroying %s", n.Name)
@@ -180,9 +203,8 @@ func (m *Manager) Destroy(ctx context.Context) error {
 			return err
 		}
 	}
-	dir, err := config.EnvDir(m.Profile.ID)
-	if err == nil {
-		os.RemoveAll(dir)
+	if err := config.RemoveEnvDir(m.Profile.ID); err != nil {
+		return fmt.Errorf("remove environment artifacts: %w", err)
 	}
 	m.mu.Lock()
 	m.ips = map[string]string{}

@@ -2,11 +2,13 @@ package grader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/gustavfredrikson/cka-dojo/internal/environment"
+	"github.com/gustavfredrikson/cka-dojo/internal/provider"
 )
 
 func init() {
@@ -264,7 +266,19 @@ func (c *Command) Check(ctx context.Context, env *environment.Manager) Result {
 		node = cp.Name
 	}
 	script := fmt.Sprintf("export KUBECONFIG=%s\n%s\n", environment.AdminKubeconfig, c.Command)
-	res, _ := env.Exec(ctx, node, script, "root")
+	res, err := env.Exec(ctx, node, script, "root")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return broken(c.Describe(), ctxErr)
+	}
+	if err != nil {
+		// A command's non-zero exit may be the expected answer. Failure to
+		// execute it has no answer, even when the result's default exit code
+		// happens to match the requirement.
+		var exitErr *provider.ExitError
+		if !errors.As(err, &exitErr) {
+			return broken(c.Describe(), err)
+		}
+	}
 	want := 0
 	if c.ExitCode != nil {
 		want = *c.ExitCode

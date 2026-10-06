@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gustavfredrikson/cka-dojo/internal/config"
 	"github.com/gustavfredrikson/cka-dojo/internal/content"
 	"gopkg.in/yaml.v3"
 )
@@ -261,8 +262,8 @@ func (p *Profile) Validate() error {
 	if p.SchemaVersion != 1 {
 		return fmt.Errorf("unsupported schemaVersion %d (want 1)", p.SchemaVersion)
 	}
-	if p.ID == "" {
-		return fmt.Errorf("id is required")
+	if err := p.validateIDs(); err != nil {
+		return err
 	}
 	if len(p.Nodes) == 0 {
 		return fmt.Errorf("profile has no nodes")
@@ -276,9 +277,6 @@ func (p *Profile) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, n := range p.Nodes {
-		if n.Name == "" {
-			return fmt.Errorf("node without a name")
-		}
 		if seen[n.Name] {
 			return fmt.Errorf("duplicate node %q", n.Name)
 		}
@@ -325,6 +323,23 @@ func (p *Profile) Validate() error {
 	return nil
 }
 
+// validateIDs is also used at manager boundaries, since callers can construct
+// a Profile directly instead of loading and validating content from disk.
+func (p *Profile) validateIDs() error {
+	if p == nil {
+		return fmt.Errorf("environment profile is required")
+	}
+	if err := config.ValidateID(p.ID); err != nil {
+		return fmt.Errorf("profile id: %w", err)
+	}
+	for _, n := range p.Nodes {
+		if err := config.ValidateID(n.Name); err != nil {
+			return fmt.Errorf("node name: %w", err)
+		}
+	}
+	return nil
+}
+
 // validateAPIEndpoint checks the load-balancer declaration, and insists on one
 // as soon as a profile has more than one control plane.
 //
@@ -365,6 +380,9 @@ func trimCIDR(cidr string) string {
 
 // LoadProfile reads environments/<id>/environment.yaml.
 func LoadProfile(src *content.Source, id string) (*Profile, error) {
+	if err := config.ValidateID(id); err != nil {
+		return nil, fmt.Errorf("environment profile: %w", err)
+	}
 	name := path.Join("environments", id, "environment.yaml")
 	data, err := src.Read(name)
 	if err != nil {
@@ -376,6 +394,8 @@ func LoadProfile(src *content.Source, id string) (*Profile, error) {
 	}
 	if p.ID == "" {
 		p.ID = id
+	} else if p.ID != id {
+		return nil, fmt.Errorf("%s: profile id %q does not match directory %q", name, p.ID, id)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
@@ -392,6 +412,9 @@ func ListProfiles(src *content.Source) ([]string, error) {
 	var ids []string
 	for _, e := range entries {
 		if e.IsDir() && src.Exists(path.Join("environments", e.Name(), "environment.yaml")) {
+			if err := config.ValidateID(e.Name()); err != nil {
+				return nil, fmt.Errorf("environment profile directory: %w", err)
+			}
 			ids = append(ids, e.Name())
 		}
 	}

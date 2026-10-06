@@ -442,7 +442,17 @@ func (a *AuthCanI) Check(ctx context.Context, env *environment.Manager) Result {
 	}
 	answer := strings.TrimSpace(res.Stdout)
 	// `auth can-i` says yes/no on stdout and mirrors it in the exit code.
-	got := strings.HasPrefix(answer, "yes")
+	// An API error is not a denial: only an explicit answer with its expected
+	// exit code is evidence about this subject's permissions.
+	var got bool
+	switch {
+	case answer == "yes" && res.ExitCode == 0:
+		got = true
+	case answer == "no" && res.ExitCode == 1:
+	default:
+		return broken(a.Describe(), fmt.Errorf("kubectl auth can-i returned no valid permission answer (exit code %d, stdout %q): %s",
+			res.ExitCode, answer, firstLine(res.Stderr)))
+	}
 	if got == *a.Expect {
 		return pass(a.Describe())
 	}

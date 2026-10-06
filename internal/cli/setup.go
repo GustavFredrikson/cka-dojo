@@ -83,9 +83,12 @@ func ensureUp(ctx context.Context, m *environment.Manager) error {
 		return err
 	}
 	if running {
-		// Already up, but another profile may be up alongside it -- a lab that
-		// names a second profile starts this one without ever stopping that.
-		return m.StopOthers(ctx)
+		if err := m.StopOthers(ctx); err != nil {
+			return err
+		}
+		// Running guests can still be midway through an interrupted setup.
+		// Resume the marked provisioning steps before building a new lab.
+		return m.Up(ctx, false)
 	}
 	ui.Warn("environment %q is not running; building it first", m.Profile.ID)
 	return setupEnvironment(ctx, m, false)
@@ -102,7 +105,7 @@ The workstation is not part of the cluster, which is what lets a lab break a
 control-plane node without breaking the shell you are working from. From
 there, ssh cp1, ssh worker1 and ssh worker2 all work.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			m, err := app.Manager("")
+			m, err := app.CurrentManager()
 			if err != nil {
 				return err
 			}
