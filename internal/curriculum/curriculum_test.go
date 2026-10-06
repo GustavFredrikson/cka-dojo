@@ -171,6 +171,7 @@ func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 		"observability":        2,
 		"troubleshooting":      3,
 		"cluster-bootstrap":    4,
+		"cluster-upgrade":      3,
 	}
 	total := 0
 	for topic, want := range wantByModule {
@@ -195,7 +196,7 @@ func TestCurriculumHasTheExpectedBuildableExercises(t *testing.T) {
 			}
 		}
 	}
-	if want := 90; total != want {
+	if want := 93; total != want {
 		t.Errorf("curriculum has %d exercises, want %d", total, want)
 	}
 	if got := cur.LabCount(); got != total {

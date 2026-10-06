@@ -1,0 +1,169 @@
+schemaVersion: 1
+id: upgrade-control-plane
+title: Upgrade the control plane to 1.35
+learningStage: guided-fix
+prerequisites: [upgrade-plan]
+domain: [cluster-architecture]
+skills: [kubeadm, cluster-upgrade, control-plane-components, static-pods, node-maintenance]
+difficulty: 4
+targetMinutes: 25
+environment: {profile: upgrade-1.34}
+
+setup:
+  apply: [manifests/baseline.yaml]
+  waitReady:
+    - {namespace: dojo-upgrade-control-plane, kind: deployment, name: ledger}
+  faults:
+    # A kubeadm upgrade is one-way: nothing here puts 1.35 back to 1.34. Without
+    # this guard `dojo reset` would hand back a lab that grades as already
+    # passed before the learner touches anything -- the silent free pass the
+    # cluster-scoped-object rule exists to prevent. Refuse instead, and say what
+    # to do about it.
+    - type: nodeExec
+      node: cp1
+      script: |
+        v=$(kubeadm version -o short)
+        case "$v" in
+          v1.34.*)
+            echo "cp1 is on $v; the upgrade drill can run"
+            ;;
+          *)
+            echo "cp1 is already on $v." >&2
+            echo "A kubeadm upgrade is one-way: nothing can put 1.35 back to 1.34," >&2
+            echo "so this drill cannot be reset in place." >&2
+            echo "Rebuild with \`dojo env reset --profile upgrade-1.34\` to run it again." >&2
+            exit 1
+            ;;
+        esac
+      undo: 'true'
+
+    # Put the node back into the state a real 1.34 machine is in, in case an
+    # earlier attempt got part-way through and left the holds lifted or the
+    # repository moved.
+    - type: nodeExec
+      node: cp1
+      script: |
+        apt-mark hold kubelet kubeadm kubectl >/dev/null
+        printf 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /\n' \
+          > /etc/apt/sources.list.d/kubernetes.list
+        chmod 0644 /etc/apt/sources.list.d/kubernetes.list
+        apt-mark showhold | grep -q '^kubeadm$'
+        echo "cp1 is pinned to the v1.34 package repository"
+      undo: 'true'
+
+grading:
+  all:
+    - type: command
+      target: cp1
+      description: the kubeadm binary on cp1 is from the 1.35 line
+      command: kubeadm version -o short
+      stdout: {matches: '^v1\.35\.\d+$'}
+
+    - type: command
+      target: cp1
+      description: the API server the cluster is actually serving is 1.35
+      command: |
+        set -euo pipefail
+        kubectl version -o json | jq -r .serverVersion.gitVersion
+      stdout: {matches: '^v1\.35\.\d+$'}
+
+    # The static Pod manifests are what `kubeadm upgrade apply` rewrites.
+    # Checking them separately catches a learner who installed the new packages
+    # and never ran the upgrade.
+    - type: nodeFile
+      node: cp1
+      path: /etc/kubernetes/manifests/kube-apiserver.yaml
+      matches: 'image:\s*\S*kube-apiserver:v1\.35\.'
+    - type: nodeFile
+      node: cp1
+      path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+      matches: 'image:\s*\S*kube-controller-manager:v1\.35\.'
+    - type: nodeFile
+      node: cp1
+      path: /etc/kubernetes/manifests/kube-scheduler.yaml
+      matches: 'image:\s*\S*kube-scheduler:v1\.35\.'
+
+    # And the kubelet, which `kubeadm upgrade` does NOT move for you.
+    - type: jsonPath
+      kind: node
+      name: cp1
+      path: '{.status.nodeInfo.kubeletVersion}'
+      matches: '^v1\.35\.\d+$'
+
+    # The classic miss: drained and never uncordoned.
+    - {type: nodeReady, node: cp1, ready: true, schedulable: true}
+
+    # worker1 was left alone, and the cluster kept working throughout.
+    - {type: nodeReady, node: worker1, ready: true, schedulable: true}
+    - type: jsonPath
+      kind: node
+      name: worker1
+      path: '{.status.nodeInfo.kubeletVersion}'
+      matches: '^v1\.34\.\d+$'
+    - type: deploymentAvailable
+      namespace: dojo-upgrade-control-plane
+      name: ledger
+      minReplicas: 2
+
+    - type: command
+      target: cp1
+      description: the Kubernetes packages are held again, the way you found them
+      command: |
+        set -euo pipefail
+        held=$(apt-mark showhold)
+        printf '%s' "$held" | grep -q '^kubelet$'
+        printf '%s' "$held" | grep -q '^kubeadm$'
+        echo "packages are held"
+      stdout: {contains: packages are held}
+
+hints:
+  - The version a node runs comes from three separate places that have to move
+    together -- the `kubeadm` binary, the component images kubeadm writes into
+    the static Pod manifests, and the `kubelet` package. Moving one and not the
+    others is the usual way this goes wrong.
+  - >-
+    Before you can install anything you have to be allowed to. Look at
+    `apt-mark showhold`, and at `/etc/apt/sources.list.d/kubernetes.list` --
+    that repository carries exactly one Kubernetes minor, and it is not the one
+    you want. `apt-cache madison kubeadm` shows what is on offer once you have
+    fixed it.
+  - >-
+    Order matters. Get the new `kubeadm` first and ask it what it intends to do
+    before letting it do it. Only after the control-plane components have moved
+    does the kubelet follow, and the node has to be drained around that step --
+    and put back afterwards.
+  - |
+    On cp1, in this order:
+
+    ```
+    sudo sed -i 's#/v1\.34/#/v1.35/#' /etc/apt/sources.list.d/kubernetes.list
+    sudo apt-get update
+    apt-cache madison kubeadm | head -3          # pick the 1.35 version string
+    sudo apt-mark unhold kubeadm
+    sudo apt-get install -y kubeadm=<version>
+    sudo apt-mark hold kubeadm
+    kubeadm version
+
+    sudo kubeadm upgrade plan
+    sudo kubeadm upgrade apply v1.35.<patch> -y
+    ```
+
+    Then the kubelet, with the node drained:
+
+    ```
+    kubectl drain cp1 --ignore-daemonsets          # from the workstation
+    sudo apt-mark unhold kubelet kubectl
+    sudo apt-get install -y kubelet=<version> kubectl=<version>
+    sudo apt-mark hold kubelet kubectl
+    sudo systemctl daemon-reload && sudo systemctl restart kubelet
+    kubectl uncordon cp1
+    ```
+
+    `kubectl` on cp1 needs a kubeconfig; either run the drain and uncordon from
+    the workstation, or use `sudo kubectl --kubeconfig /etc/kubernetes/admin.conf`.
+
+exam: {eligible: false}
+conflicts:
+  - namespace:dojo-upgrade-control-plane
+  - cluster.version
+  - cp1.kubeadm

@@ -167,6 +167,8 @@ skills:
     name: kubeadm
   - id: cluster-bootstrap
     name: Cluster creation and joining nodes
+  - id: cluster-upgrade
+    name: Cluster upgrades and version skew
   - id: kubeconfig
     name: kubeconfig files
   - id: helm
@@ -212,16 +214,13 @@ modules:
   - 14-observability
   - 15-troubleshooting
   - 16-cluster-bootstrap
+  - 17-cluster-upgrade
 
 # Published competencies with no exercise behind them yet. `dojo readiness`
 # prints these alongside its verdict, so a learner is never told they are
 # ready on the strength of labs that exist while the exam also tests things
 # this content set does not cover. Delete an entry the day a lab lands.
 knownGaps:
-  - id: cluster-upgrade
-    name: Cluster lifecycle and kubeadm upgrade
-    domain: cluster-architecture
-    note: Waiting on the upgrade-1.34 environment profile.
   - id: ha-control-plane
     name: Highly-available control plane
     domain: cluster-architecture

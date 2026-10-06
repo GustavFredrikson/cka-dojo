@@ -1,0 +1,11 @@
+id: 17-cluster-upgrade
+name: Cluster upgrades
+summary: >-
+  A 1.34 cluster taken to 1.35 the way the exam asks for it: the package
+  repository, the holds, `kubeadm upgrade`, and the kubelet on each node in
+  turn. Runs on the `upgrade-1.34` profile.
+domains: [cluster-architecture]
+labs:
+  - upgrade-plan
+  - upgrade-control-plane
+  - upgrade-worker
