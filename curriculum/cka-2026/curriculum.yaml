@@ -165,6 +165,8 @@ skills:
     name: Certificate renewal
   - id: kubeadm
     name: kubeadm
+  - id: cluster-bootstrap
+    name: Cluster creation and joining nodes
   - id: kubeconfig
     name: kubeconfig files
   - id: helm
@@ -209,6 +211,7 @@ modules:
   - 13-packaging-extensions
   - 14-observability
   - 15-troubleshooting
+  - 16-cluster-bootstrap
 
 # Published competencies with no exercise behind them yet. `dojo readiness`
 # prints these alongside its verdict, so a learner is never told they are
@@ -219,10 +222,6 @@ knownGaps:
     name: Cluster lifecycle and kubeadm upgrade
     domain: cluster-architecture
     note: Waiting on the upgrade-1.34 environment profile.
-  - id: kubeadm-bootstrap
-    name: Cluster creation and joining a node
-    domain: cluster-architecture
-    note: Waiting on the raw environment profile.
   - id: ha-control-plane
     name: Highly-available control plane
     domain: cluster-architecture
@@ -231,7 +230,10 @@ knownGaps:
     name: Extension interfaces (CNI, CSI, CRI)
     domain: cluster-architecture
     note: >-
-      `crictl` is the diagnostic route in etcd-unreachable,
-      controlplane-scheduler and node-not-ready, and operator-reconcile now
-      covers how the CNI is installed and managed. What is still missing is
-      replacing a CNI or a CSI driver, which needs the raw profile.
+      CRI and CSI are covered: `cri-inspect` reads the runtime through crictl,
+      and `csi-provisioner-restore` repairs dynamic provisioning at the
+      provisioner rather than at the claim. What is left is replacing a CNI on
+      a running cluster, which cannot be made resettable on a shared profile --
+      a swap leaves CRDs, iptables rules and interfaces behind. `cni-install`
+      on the raw profile covers installing one from nothing; replacing one on a
+      live cluster stays deliberately out of scope.

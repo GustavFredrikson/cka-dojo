@@ -1,0 +1,12 @@
+id: 16-cluster-bootstrap
+name: Building a cluster
+summary: >-
+  From prepared Linux machines to a working cluster: kubeadm init, a pod
+  network, and a worker that joins. Runs on the `raw` profile, where nothing
+  above containerd and the kubelet has been done for you.
+domains: [cluster-architecture]
+labs:
+  - kubeadm-preflight
+  - kubeadm-init-cluster
+  - cni-install
+  - kubeadm-join-worker

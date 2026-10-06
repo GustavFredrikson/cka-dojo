@@ -1,0 +1,190 @@
+schemaVersion: 1
+id: kubeadm-init-cluster
+title: Build a control plane with kubeadm
+learningStage: build
+prerequisites: [kubeadm-preflight]
+domain: [cluster-architecture]
+skills: [kubeadm, cluster-bootstrap, control-plane-components, static-pods, kubeconfig, kubelet]
+difficulty: 4
+targetMinutes: 30
+environment: {profile: raw}
+
+# No setup.apply and no waitReady. On this profile there is no cluster when
+# setup runs, and Runner.Setup applies manifests through kubectl on the control
+# plane before faults land -- a baseline manifest here would abort `dojo start`
+# before the learner ever saw the task.
+setup:
+  faults:
+    - type: nodeExec
+      node: cp1
+      # Establish bare-ness rather than assuming it: after a successful attempt
+      # the node stays initialised, and nothing in `dojo setup` undoes that.
+      script: |
+        systemctl stop kubelet || true
+        kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock >/dev/null 2>&1 || true
+        rm -rf /etc/kubernetes /var/lib/etcd /var/lib/kubelet/pki \
+               /etc/cni/net.d /var/lib/cni /root/.kube /home/student/.kube
+        iptables -F || true
+        iptables -t nat -F || true
+        iptables -t mangle -F || true
+        iptables -X || true
+        ip link delete cni0 2>/dev/null || true
+        ip link delete vxlan.calico 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        systemctl restart containerd
+        crictl rmp -fa >/dev/null 2>&1 || true
+        systemctl start kubelet || true
+        test ! -e /etc/kubernetes/admin.conf
+        test ! -e /var/lib/etcd
+        echo "cp1 is bare"
+      undo: 'true'
+
+    - type: nodeExec
+      node: worker1
+      # worker1 stays out of this lab, but it must be bare too: a leftover
+      # kubelet.conf from an earlier attempt would let it try to re-register
+      # against a cluster that no longer exists, and `kubectl get nodes` would
+      # then lie about how many nodes there are.
+      script: |
+        systemctl stop kubelet || true
+        kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock >/dev/null 2>&1 || true
+        rm -rf /etc/kubernetes /var/lib/kubelet/pki /etc/cni/net.d /var/lib/cni
+        iptables -F || true
+        iptables -t nat -F || true
+        systemctl restart containerd
+        test ! -e /etc/kubernetes/kubelet.conf
+        echo "worker1 is bare"
+      undo: 'true'
+
+    - type: nodeExec
+      node: terminal
+      script: |
+        rm -rf /home/student/.kube
+        test ! -e /home/student/.kube/config
+        echo "workstation has no kubeconfig"
+      undo: |
+        rm -rf /home/student/.kube || true
+
+grading:
+  # Every one of these fails cleanly before `kubeadm init`: the node graders
+  # look at files that are not there, and the kubectl graders get a non-zero
+  # exit because /etc/kubernetes/admin.conf does not exist -- which KubectlRaw
+  # reports as a failed check rather than an engine error.
+  all:
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/admin.conf, contains: client-certificate-data}
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/manifests/etcd.yaml}
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/manifests/kube-apiserver.yaml}
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/manifests/kube-scheduler.yaml}
+    - {type: nodeFile, node: cp1, path: /etc/kubernetes/manifests/kube-controller-manager.yaml}
+
+    - type: command
+      target: cp1
+      description: the API server on cp1 is serving requests
+      command: kubectl get --raw=/readyz
+      stdout: {contains: ok}
+
+    - type: command
+      target: cp1
+      description: the control plane runs the Kubernetes version this environment pins
+      command: |
+        set -euo pipefail
+        kubectl version -o json | jq -r .serverVersion.gitVersion
+      stdout: {matches: '^v1\.35\.\d+$'}
+
+    # Proves --pod-network-cidr was actually passed: without it the
+    # controller-manager allocates no node CIDRs at all.
+    - type: jsonPath
+      kind: node
+      name: cp1
+      path: '{.spec.podCIDR}'
+      equals: 10.244.0.0/24
+
+    - type: command
+      target: cp1
+      description: cp1 is registered, alone, and labelled as a control plane
+      command: |
+        set -euo pipefail
+        test "$(kubectl get nodes -o name | wc -l)" = 1
+        kubectl get node cp1 -o jsonpath='{.metadata.labels}' \
+          | grep -q 'node-role.kubernetes.io/control-plane'
+        echo "single control-plane node"
+      stdout: {contains: single control-plane node}
+
+    - type: command
+      target: cp1
+      description: etcd is running under the kubelet as a static Pod
+      command: |
+        set -euo pipefail
+        kubectl -n kube-system get pod etcd-cp1 -o jsonpath='{.status.phase}{"\n"}'
+      stdout: {equals: Running}
+
+    - type: command
+      target: terminal
+      description: the student can reach the new cluster from the workstation without sudo
+      command: |
+        set -euo pipefail
+        runuser -u student -- env -u KUBECONFIG HOME=/home/student \
+          kubectl get nodes -o name
+      stdout: {contains: node/cp1}
+
+    - type: command
+      target: terminal
+      description: that access is the default kubeconfig, not an environment variable
+      command: |
+        set -euo pipefail
+        test -s /home/student/.kube/config
+        test "$(stat -c %U /home/student/.kube/config)" = student
+        echo "default kubeconfig present"
+      stdout: {contains: default kubeconfig present}
+
+hints:
+  - Everything a node needs is already installed on cp1 -- containerd, the
+    kubelet, kubeadm and kubectl, all at the right version. What does not exist
+    is the cluster. One command creates it, and it has to be told three things
+    it cannot safely guess.
+  - >-
+    `kubeadm init --help` lists the flags. Be careful how you find cp1's
+    address: `grep cp1 /etc/hosts` shows Ubuntu's own `127.0.1.1 cp1` line
+    first, and passing that gets you `unable to select an IP from lo network
+    interface`. The address you want is the one on the environment network --
+    `ip -4 addr` shows it, and `/etc/default/kubelet` already pins it.
+    When init finishes, kubeadm prints exactly what to do next; read that
+    output rather than guessing at it.
+  - >-
+    A kubeconfig is just a file, and getting one onto the workstation is a
+    copy. The one kubeadm writes is `/etc/kubernetes/admin.conf` on cp1. The
+    `server:` URL inside it has to be an address the workstation can actually
+    reach. You have `ssh cp1` and passwordless sudo there.
+  - |
+    On cp1:
+
+    ```
+    # the address to advertise -- NOT `grep cp1 /etc/hosts`, which finds
+    # Ubuntu's 127.0.1.1 line first
+    sed -n 's/.*--node-ip=\([0-9.]*\).*/\1/p' /etc/default/kubelet
+
+    sudo kubeadm init \
+      --apiserver-advertise-address=<that address> \
+      --pod-network-cidr=10.244.0.0/16 \
+      --service-cidr=10.96.0.0/12 \
+      --cri-socket=unix:///run/containerd/containerd.sock
+    ```
+
+    Then, back on the workstation:
+
+    ```
+    mkdir -p ~/.kube
+    ssh cp1 'sudo cat /etc/kubernetes/admin.conf' > ~/.kube/config
+    chmod 600 ~/.kube/config
+    kubectl get nodes
+    ```
+
+    If `kubeadm init` fails part-way, `sudo kubeadm reset -f` puts the node back
+    and you can try again.
+
+exam: {eligible: false}
+conflicts:
+  - cluster.bootstrap
+  - cp1.kubeadm
+  - worker1.kubeadm
+  - terminal.path:/home/student/.kube/config

@@ -1,0 +1,131 @@
+schemaVersion: 1
+id: kubeadm-preflight
+title: A machine that is not yet a node
+learningStage: inspect
+domain: [cluster-architecture]
+skills: [kubeadm, cluster-bootstrap, kubelet, containerd, cri, systemd]
+difficulty: 2
+targetMinutes: 12
+environment: {profile: raw}
+
+# Read-only, so it is infinitely repeatable and cannot leave the profile in a
+# state the next lab has to clean up. It exists so the learner meets a prepared
+# machine before being asked to turn one into a control plane.
+#
+# No setup.apply and no waitReady: on this profile there is no cluster when
+# setup runs, and the engine applies manifests through kubectl on the control
+# plane before faults land -- a baseline manifest here would abort `dojo start`
+# before the learner ever saw the task.
+setup:
+  faults:
+    # Establish bare-ness rather than assuming it. A raw lab is one-shot
+    # otherwise: after `kubeadm init` the node stays initialised, and neither
+    # control-plane.sh's own guard nor the step markers under /var/lib/dojo
+    # will undo that, so even `dojo setup --force` leaves it alone.
+    - type: nodeExec
+      node: cp1
+      script: |
+        systemctl stop kubelet || true
+        kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock >/dev/null 2>&1 || true
+        rm -rf /etc/kubernetes /var/lib/etcd /var/lib/kubelet/pki \
+               /etc/cni/net.d /var/lib/cni /root/.kube /home/student/.kube
+        iptables -F || true
+        iptables -t nat -F || true
+        iptables -t mangle -F || true
+        iptables -X || true
+        ip link delete cni0 2>/dev/null || true
+        ip link delete vxlan.calico 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        systemctl restart containerd
+        crictl rmp -fa >/dev/null 2>&1 || true
+        # kubelet stays enabled: `kubeadm init` expects the unit enabled, and a
+        # kubelet crash-looping with no config is the correct starting state --
+        # it is the first checkpoint's subject.
+        systemctl start kubelet || true
+        test ! -e /etc/kubernetes/admin.conf
+        test ! -e /var/lib/etcd
+        echo "cp1 is bare"
+      undo: 'true'
+
+checkpoints:
+  - id: kubelet-state
+    task: |
+      Run `systemctl is-active kubelet` on cp1. The kubelet is installed and
+      enabled, and there is no cluster. What state does it report? One word.
+    answer:
+      accepted: ["activating", "auto-restart", "activating (auto-restart)", "failed"]
+      caseInsensitive: true
+
+  - id: missing-config
+    task: |
+      Read why with `journalctl -u kubelet -n 20 --no-pager`. The kubelet is
+      looking for a file that does not exist yet, and `kubeadm init` is what
+      writes it. Give its absolute path.
+    answer:
+      accepted:
+        - "/etc/kubernetes/kubelet.conf"
+        - "/var/lib/kubelet/config.yaml"
+        - "/etc/kubernetes/bootstrap-kubelet.conf"
+      caseInsensitive: true
+
+  - id: swap
+    task: |
+      Run `swapon --show` on cp1. What does it print, and what does that tell
+      you about a preflight check you will therefore not have to fix? Answer
+      with what the command prints -- one word for empty output.
+    answer:
+      accepted: ["nothing", "empty", "no output", "blank", ""]
+      caseInsensitive: true
+
+  - id: apiserver-port
+    task: |
+      `kubeadm init` runs a preflight check that a particular port is free,
+      because the API server is about to bind it. Which port?
+    answer:
+      accepted: ["6443", ":6443"]
+
+  - id: node-ip
+    task: |
+      Read `/etc/default/kubelet`. It pins this node's address explicitly
+      rather than letting the kubelet choose. Which flag does it set? Give the
+      flag name **without** its leading dashes -- `dojo check` would read those
+      as its own options.
+    answer:
+      accepted: ["node-ip", "--node-ip"]
+      caseInsensitive: true
+
+  - id: cri-socket
+    task: |
+      Read `/etc/crictl.yaml`. Which runtime socket will you have to tell
+      `kubeadm init` to use? Give the path without the `unix://` scheme.
+    answer:
+      accepted:
+        - "/run/containerd/containerd.sock"
+        - "/var/run/containerd/containerd.sock"
+      caseInsensitive: true
+
+grading:
+  all:
+    # Node-level graders only. There is no cluster to ask, and that is the
+    # point of the exercise.
+    - type: nodeFile
+      node: cp1
+      path: /etc/kubernetes/admin.conf
+      absent: true
+    - type: nodeService
+      node: cp1
+      unit: containerd
+      state: active
+      enabled: true
+    - type: command
+      target: cp1
+      description: the kubeadm toolchain is installed and pinned
+      command: |
+        set -euo pipefail
+        kubeadm version -o short
+      stdout: {matches: '^v1\.35\.\d+$'}
+
+exam: {eligible: false}
+conflicts:
+  - cluster.bootstrap
+  - cp1.kubeadm

@@ -1,0 +1,174 @@
+schemaVersion: 1
+id: cni-install
+title: Give the cluster a pod network
+learningStage: build
+prerequisites: [kubeadm-init-cluster]
+domain: [cluster-architecture, services-networking]
+skills: [cni, cluster-bootstrap, kubeadm, pod-connectivity, coredns]
+difficulty: 3
+targetMinutes: 18
+environment: {profile: raw}
+
+# Setup builds the cluster for the learner and stops short of the CNI, so this
+# lab starts where the previous one ended. That costs three to five minutes on
+# every start and reset -- said plainly in task.md -- and it is the price of
+# making a raw-profile lab repeatable at all.
+setup:
+  faults:
+    - type: nodeExec
+      node: cp1
+      script: |
+        systemctl stop kubelet || true
+        kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock >/dev/null 2>&1 || true
+        rm -rf /etc/kubernetes /var/lib/etcd /var/lib/kubelet/pki \
+               /etc/cni/net.d /var/lib/cni /root/.kube /home/student/.kube
+        iptables -F || true
+        iptables -t nat -F || true
+        iptables -t mangle -F || true
+        iptables -X || true
+        ip link delete cni0 2>/dev/null || true
+        ip link delete vxlan.calico 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        systemctl restart containerd
+        crictl rmp -fa >/dev/null 2>&1 || true
+        test ! -e /etc/kubernetes/admin.conf
+        echo "cp1 is bare"
+      undo: 'true'
+
+    - type: nodeExec
+      node: worker1
+      script: |
+        systemctl stop kubelet || true
+        kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock >/dev/null 2>&1 || true
+        rm -rf /etc/kubernetes /var/lib/kubelet/pki /etc/cni/net.d /var/lib/cni
+        iptables -F || true
+        iptables -t nat -F || true
+        systemctl restart containerd
+        echo "worker1 is bare"
+      undo: 'true'
+
+    - type: nodeExec
+      node: cp1
+      # Build the control plane, and deliberately stop before the CNI.
+      script: |
+        set -euo pipefail
+        # Not /etc/hosts: Ubuntu's own `127.0.1.1 cp1` line comes before the
+        # block the engine writes, so a naive grep picks loopback and kubeadm
+        # refuses with "unable to select an IP from lo network interface".
+        # /etc/default/kubelet is authoritative -- the engine pinned it.
+        ip=$(sed -n 's/.*--node-ip=\([0-9.]*\).*/\1/p' /etc/default/kubelet)
+        test -n "$ip"
+        kubeadm init \
+          --apiserver-advertise-address="$ip" \
+          --pod-network-cidr=10.244.0.0/16 \
+          --service-cidr=10.96.0.0/12 \
+          --node-name=cp1 \
+          --cri-socket=unix:///run/containerd/containerd.sock >/dev/null
+        mkdir -p /root/.kube
+        install -m 0600 /etc/kubernetes/admin.conf /root/.kube/config
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        for _ in $(seq 1 60); do
+          kubectl get --raw=/readyz >/dev/null 2>&1 && break
+          sleep 2
+        done
+        # The symptom must be real before the learner sees it: no CNI config,
+        # so the node stays NotReady and CoreDNS cannot schedule.
+        test ! -d /etc/cni/net.d || test -z "$(ls -A /etc/cni/net.d 2>/dev/null)"
+        echo "control plane up, no pod network"
+      undo: 'true'
+
+    - type: nodeExec
+      node: terminal
+      script: |
+        set -euo pipefail
+        install -d -o student -g student -m 0700 /home/student/.kube
+        runuser -u student -- env HOME=/home/student ssh \
+          -i /home/student/.ssh/id_ed25519 \
+          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+          cp1 'sudo cat /etc/kubernetes/admin.conf' > /home/student/.kube/config
+        chown student:student /home/student/.kube/config
+        chmod 0600 /home/student/.kube/config
+        echo "workstation kubeconfig installed"
+      undo: |
+        rm -rf /home/student/.kube || true
+
+grading:
+  all:
+    # CoreDNS is the whole lab in one check: it already tolerates the
+    # control-plane taint and stays Pending until a pod network exists.
+    - type: deploymentAvailable
+      namespace: kube-system
+      name: coredns
+      minReplicas: 2
+
+    - {type: nodeReady, node: cp1, ready: true}
+
+    - type: command
+      target: cp1
+      description: a CNI configuration has been written on cp1
+      command: |
+        set -euo pipefail
+        test -d /etc/cni/net.d
+        test -n "$(ls -A /etc/cni/net.d)"
+        echo "cni config present"
+      stdout: {contains: cni config present}
+
+    # Without this, a CNI installed with a mismatched CIDR still gets CoreDNS
+    # Ready and would pass a lab that has left the cluster subtly wrong.
+    - type: command
+      target: cp1
+      description: Pod addresses come from the pod network this cluster was built for
+      command: |
+        set -euo pipefail
+        # Address the list, not items[0]: with no CoreDNS Pods at all, indexing
+        # prints a jsonpath traceback instead of a readable failure.
+        ip=$(kubectl -n kube-system get pod -l k8s-app=kube-dns \
+          -o jsonpath='{.items[*].status.podIP}' | awk '{print $1}')
+        if [ -z "$ip" ]; then
+          echo "no CoreDNS Pod has an address yet" >&2
+          exit 1
+        fi
+        case "$ip" in
+          10.244.*) echo "pod IP $ip is inside 10.244.0.0/16" ;;
+          *) echo "pod IP $ip is outside the declared pod network" >&2; exit 1 ;;
+        esac
+      stdout: {contains: is inside 10.244.0.0/16}
+
+hints:
+  - The node is NotReady and CoreDNS will not schedule. Look at what the kubelet
+    says about the node's readiness condition -- it names the subsystem it is
+    waiting for.
+  - >-
+    Kubernetes does not ship a pod network. `kubeadm init` deliberately leaves
+    that to you, which is why it printed a line about it. The kubelet looks for
+    a configuration in `/etc/cni/net.d`, and right now there is nothing there.
+  - >-
+    Any of the usual CNI plugins works here, installed the usual way -- a
+    manifest applied to the cluster, which runs a DaemonSet that writes the
+    config on every node. The one thing that is not free is the address range:
+    it has to match the `--pod-network-cidr` this cluster was built with, which
+    is `10.244.0.0/16`.
+  - |
+    Flannel is the shortest, because its default range is already 10.244.0.0/16:
+
+    ```
+    kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+    ```
+
+    Calico works too, but its default pool is 192.168.0.0/16 -- download the
+    custom-resources manifest and set `cidr: 10.244.0.0/16` before applying it.
+
+    Then watch it come up:
+
+    ```
+    kubectl get nodes -w
+    kubectl -n kube-system get pods
+    ```
+
+exam: {eligible: false}
+conflicts:
+  - cluster.bootstrap
+  - cluster.cni
+  - cp1.kubeadm
+  - worker1.kubeadm
+  - terminal.path:/home/student/.kube/config
