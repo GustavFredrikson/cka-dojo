@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"text/tabwriter"
 	"time"
 )
 
@@ -118,20 +117,79 @@ func Heading(format string, a ...any) {
 func Table(headers []string, rows [][]string) {
 	mu.Lock()
 	defer mu.Unlock()
-	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	if len(headers) > 0 {
-		fmt.Fprintln(tw, strings.Join(headers, "\t"))
-		underline := make([]string, len(headers))
-		for i, h := range headers {
-			underline[i] = strings.Repeat("-", len(h))
-		}
-		fmt.Fprintln(tw, strings.Join(underline, "\t"))
-	}
+	fmt.Fprint(os.Stdout, renderTable(headers, rows))
 	for _, r := range rows {
-		fmt.Fprintln(tw, strings.Join(r, "\t"))
 		mirror("table", strings.Join(r, " | "))
 	}
-	tw.Flush()
+}
+
+// renderTable aligns columns by the width a terminal draws, not by rune
+// count, which is what text/tabwriter uses: 🔒 is one rune but two columns,
+// and counting it as one pushed every locked row in `dojo learn` one column
+// to the right. Layout otherwise matches the tabwriter it replaces: two
+// spaces between columns and no padding after a row's last cell.
+func renderTable(headers []string, rows [][]string) string {
+	all := rows
+	if len(headers) > 0 {
+		underline := make([]string, len(headers))
+		for i, h := range headers {
+			underline[i] = strings.Repeat("-", displayWidth(h))
+		}
+		all = append([][]string{headers, underline}, rows...)
+	}
+
+	var widths []int
+	for _, r := range all {
+		for i, cell := range r[:max(len(r)-1, 0)] {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[i] = max(widths[i], displayWidth(cell))
+		}
+	}
+
+	var b strings.Builder
+	for _, r := range all {
+		for i, cell := range r {
+			b.WriteString(cell)
+			if i < len(r)-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-displayWidth(cell)+2))
+			}
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// displayWidth is the number of terminal columns s occupies. It covers what
+// dojo prints -- ASCII, the narrow status marks, emoji and CJK -- rather than
+// the whole of Unicode East Asian Width.
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		if isWide(r) {
+			w += 2
+		} else {
+			w++
+		}
+	}
+	return w
+}
+
+func isWide(r rune) bool {
+	switch {
+	case r >= 0x1F300 && r <= 0x1FAFF: // pictographs and emoji, including 🔒
+		return true
+	case r >= 0x1100 && r <= 0x115F, // Hangul Jamo
+		r >= 0x2E80 && r <= 0xA4CF, // CJK, kana, Yi
+		r >= 0xAC00 && r <= 0xD7A3, // Hangul syllables
+		r >= 0xF900 && r <= 0xFAFF, // CJK compatibility ideographs
+		r >= 0xFF00 && r <= 0xFF60, // full-width forms
+		r >= 0xFFE0 && r <= 0xFFE6,
+		r >= 0x20000 && r <= 0x3FFFD:
+		return true
+	}
+	return false
 }
 
 // Markdown renders a subset of Markdown for the terminal: headings are bolded,
